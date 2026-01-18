@@ -75,6 +75,13 @@ var (
 	// ErrClientClosed is returned when operations are attempted on a closed client
 	ErrClientClosed = errors.New("sqsmessaging: client is closed")
 
+	// ErrRedisRequired is returned when Redis is not configured
+	// Redis is required for queue URL caching and is a mandatory dependency
+	ErrRedisRequired = errors.New("sqsmessaging: Redis is required - use WithRedis() or WithRedisClient() option")
+
+	// ErrRedisConnectionFailed is returned when Redis connection cannot be established
+	ErrRedisConnectionFailed = errors.New("sqsmessaging: failed to connect to Redis")
+
 	// ErrIdempotencyNotConfigured is returned when idempotency operations are
 	// attempted without Redis and database configured
 	ErrIdempotencyNotConfigured = errors.New("sqsmessaging: idempotency store not configured (requires Redis and database)")

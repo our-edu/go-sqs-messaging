@@ -6,52 +6,56 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/our-edu/go-sqs-messaging/internal/config"
+	"github.com/our-edu/go-sqs-messaging/internal/contracts"
 	"github.com/rs/zerolog"
 )
 
-// Resolver handles queue URL resolution with caching and lazy creation
+const (
+	// Cache key prefix for queue URLs
+	queueURLCachePrefix = "sqs:queue_url:"
+	// Default cache TTL in seconds (24 hours)
+	queueURLCacheTTL = 86400
+)
+
+// Resolver handles queue URL resolution with Redis caching and lazy creation
 type Resolver struct {
 	client *sqs.Client
 	config *config.Config
 	logger zerolog.Logger
-	cache  map[string]string
-	mutex  sync.RWMutex
+	cache  contracts.Cache
 }
 
-// NewResolver creates a new SQS queue resolver
-func NewResolver(client *sqs.Client, cfg *config.Config, logger zerolog.Logger) *Resolver {
+// NewResolver creates a new SQS queue resolver with Redis cache
+func NewResolver(client *sqs.Client, cfg *config.Config, logger zerolog.Logger, cache contracts.Cache) *Resolver {
 	return &Resolver{
 		client: client,
 		config: cfg,
 		logger: logger,
-		cache:  make(map[string]string),
+		cache:  cache,
 	}
 }
 
 // Resolve returns the queue URL, creating the queue if necessary
 func (r *Resolver) Resolve(ctx context.Context, queueName string) (string, error) {
 	prefixedName := r.config.GetPrefixedQueueName(queueName)
+	cacheKey := queueURLCachePrefix + prefixedName
 
 	// Check cache first
-	r.mutex.RLock()
-	if url, ok := r.cache[prefixedName]; ok {
-		r.mutex.RUnlock()
+	if url, err := r.cache.Get(ctx, cacheKey); err == nil && url != "" {
 		return url, nil
 	}
-	r.mutex.RUnlock()
 
 	// Try to get existing queue URL
 	result, err := r.client.GetQueueUrl(ctx, &sqs.GetQueueUrlInput{
 		QueueName: aws.String(prefixedName),
 	})
 	if err == nil {
-		r.cacheURL(prefixedName, *result.QueueUrl)
+		r.cacheURL(ctx, prefixedName, *result.QueueUrl)
 		return *result.QueueUrl, nil
 	}
 
@@ -89,7 +93,7 @@ func (r *Resolver) CreateQueue(ctx context.Context, queueName string) (string, e
 		return "", fmt.Errorf("failed to create queue %s: %w", prefixedName, err)
 	}
 
-	r.cacheURL(prefixedName, *result.QueueUrl)
+	r.cacheURL(ctx, prefixedName, *result.QueueUrl)
 	r.logger.Info().Str("queue", prefixedName).Str("url", *result.QueueUrl).Msg("Created queue")
 	return *result.QueueUrl, nil
 }
@@ -142,7 +146,7 @@ func (r *Resolver) CreateQueueWithDLQ(ctx context.Context, queueName string) (st
 		return "", fmt.Errorf("failed to create queue %s: %w", prefixedName, err)
 	}
 
-	r.cacheURL(prefixedName, *result.QueueUrl)
+	r.cacheURL(ctx, prefixedName, *result.QueueUrl)
 	r.logger.Info().
 		Str("queue", prefixedName).
 		Str("dlq", dlqName).
@@ -165,17 +169,21 @@ func (r *Resolver) GetDLQUrl(ctx context.Context, queueName string) (string, err
 	return *result.QueueUrl, nil
 }
 
-func (r *Resolver) cacheURL(name, url string) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	r.cache[name] = url
+func (r *Resolver) cacheURL(ctx context.Context, name, url string) {
+	cacheKey := queueURLCachePrefix + name
+	if err := r.cache.Set(ctx, cacheKey, url, queueURLCacheTTL); err != nil {
+		r.logger.Warn().Err(err).Str("queue", name).Msg("Failed to cache queue URL")
+	}
 }
 
 // ClearCache clears the queue URL cache
-func (r *Resolver) ClearCache() {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	r.cache = make(map[string]string)
+func (r *Resolver) ClearCache(ctx context.Context) error {
+	if err := r.cache.DeleteByPrefix(ctx, queueURLCachePrefix); err != nil {
+		r.logger.Warn().Err(err).Msg("Failed to clear queue URL cache")
+		return err
+	}
+	r.logger.Info().Msg("Cleared queue URL cache")
+	return nil
 }
 
 // TargetQueueResolver maps event types to target consumer queues

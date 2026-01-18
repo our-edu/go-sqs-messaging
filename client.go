@@ -4,11 +4,14 @@
 // providing the same features including:
 //   - AWS SQS integration with automatic queue/DLQ creation
 //   - Message envelope with idempotency keys
+//   - Redis-based queue URL caching (required)
 //   - Redis + Database idempotency checking
 //   - Error classification (validation, transient, permanent)
 //   - CloudWatch metrics integration
 //   - Dead Letter Queue (DLQ) management
 //   - RabbitMQ fallback support for migration scenarios
+//
+// Redis is a required dependency for queue URL caching and must be configured.
 //
 // Basic Usage:
 //
@@ -16,6 +19,7 @@
 //	    sqsmessaging.WithAWSRegion("us-east-2"),
 //	    sqsmessaging.WithQueuePrefix("prod"),
 //	    sqsmessaging.WithService("payment-service"),
+//	    sqsmessaging.WithRedis("localhost:6379", "", 0),  // Required
 //	)
 //	if err != nil {
 //	    log.Fatal(err)
@@ -66,6 +70,7 @@ type Client struct {
 	sqsClient        *sqs.Client
 	cloudwatchClient *cloudwatch.Client
 	redisClient      *redis.Client
+	cache            *storage.RedisCache
 	db               *gorm.DB
 	logger           zerolog.Logger
 
@@ -84,6 +89,8 @@ type Client struct {
 }
 
 // New creates a new SQS messaging client with the provided options.
+// Redis is required for queue URL caching and must be configured using
+// WithRedis() or WithRedisClient() options.
 //
 // Example:
 //
@@ -92,7 +99,7 @@ type Client struct {
 //	    sqsmessaging.WithAWSRegion("us-east-2"),
 //	    sqsmessaging.WithQueuePrefix("prod"),
 //	    sqsmessaging.WithService("my-service"),
-//	    sqsmessaging.WithRedis("localhost:6379", "", 0),
+//	    sqsmessaging.WithRedis("localhost:6379", "", 0),  // Required
 //	)
 func New(opts ...Option) (*Client, error) {
 	// Apply default configuration
@@ -106,7 +113,11 @@ func New(opts ...Option) (*Client, error) {
 		opt(options)
 	}
 
-	// Validate required options
+	// Validate required options - Redis is now mandatory
+	if options.redisClient == nil {
+		return nil, ErrRedisRequired
+	}
+
 	if options.serviceName == "" {
 		options.serviceName = "default-service"
 	}
@@ -117,8 +128,14 @@ func New(opts ...Option) (*Client, error) {
 		logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
 	}
 
-	// Create AWS config
+	// Validate Redis connection
 	ctx := context.Background()
+	if err := options.redisClient.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrRedisConnectionFailed, err)
+	}
+	logger.Info().Msg("Redis connection verified")
+
+	// Create AWS config
 	awsOpts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(cfg.AWS.Region),
 	}
@@ -154,19 +171,23 @@ func New(opts ...Option) (*Client, error) {
 		cloudwatchClient = cloudwatch.NewFromConfig(awsCfg)
 	}
 
+	// Create Redis cache for queue URL resolution
+	redisCache := storage.NewRedisCache(options.redisClient, "sqsmessaging")
+
 	// Create client
 	client := &Client{
 		config:           cfg,
 		sqsClient:        sqsClient,
 		cloudwatchClient: cloudwatchClient,
 		redisClient:      options.redisClient,
+		cache:            redisCache,
 		db:               options.db,
 		logger:           logger,
 		serviceName:      options.serviceName,
 	}
 
-	// Initialize components
-	client.resolver = sqsdriver.NewResolver(sqsClient, cfg, logger)
+	// Initialize components with Redis cache
+	client.resolver = sqsdriver.NewResolver(sqsClient, cfg, logger, redisCache)
 	client.targetResolver = sqsdriver.NewTargetQueueResolver(cfg)
 	client.publisher = sqsdriver.NewPublisher(sqsClient, client.resolver, cfg, logger, options.serviceName)
 	client.consumer = sqsdriver.NewConsumer(sqsClient, client.resolver, cfg, logger)
@@ -174,8 +195,8 @@ func New(opts ...Option) (*Client, error) {
 	client.eventRegistry = messaging.NewEventRegistry()
 	client.messagingService = messaging.NewService(cfg, logger)
 
-	// Initialize idempotency store if Redis and DB are provided
-	if client.redisClient != nil && client.db != nil {
+	// Initialize idempotency store if DB is provided (Redis is already verified)
+	if client.db != nil {
 		client.idempotencyStore = storage.NewIdempotencyStore(client.redisClient, client.db, logger)
 		if err := client.idempotencyStore.AutoMigrate(); err != nil {
 			logger.Warn().Err(err).Msg("Failed to auto-migrate idempotency table")

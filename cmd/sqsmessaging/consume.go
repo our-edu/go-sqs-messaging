@@ -82,14 +82,24 @@ func runConsumer(ctx context.Context, queueName string, maxMessages, waitTime in
 		Int("wait_time", waitTime).
 		Msg("Starting SQS consumer")
 
+	// Initialize Redis client first (required for caching)
+	redisClient, err := createRedisClient(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create Redis client: %w", err)
+	}
+	logger.Info().Msg("Redis connection verified")
+
+	// Create Redis cache for queue URL resolution
+	cache := createRedisCache(redisClient)
+
 	// Initialize AWS SQS client
 	sqsClient, err := createSQSClient(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create SQS client: %w", err)
 	}
 
-	// Initialize components
-	resolver := sqsdriver.NewResolver(sqsClient, cfg, logger)
+	// Initialize components with Redis cache
+	resolver := sqsdriver.NewResolver(sqsClient, cfg, logger, cache)
 	consumer := sqsdriver.NewConsumer(sqsClient, resolver, cfg, logger)
 
 	// Set up queue
@@ -339,8 +349,8 @@ func createSQSClient(ctx context.Context) (*sqs.Client, error) {
 	return sqs.NewFromConfig(awsCfg), nil
 }
 
-func createIdempotencyStore(ctx context.Context) (*storage.IdempotencyStore, error) {
-	// Create Redis client
+// createRedisClient creates and validates a Redis client connection
+func createRedisClient(ctx context.Context) (*redis.Client, error) {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
 		Password: cfg.Redis.Password,
@@ -352,9 +362,23 @@ func createIdempotencyStore(ctx context.Context) (*storage.IdempotencyStore, err
 		return nil, fmt.Errorf("redis connection failed: %w", err)
 	}
 
+	return redisClient, nil
+}
+
+// createRedisCache creates a Redis cache for queue URL resolution
+func createRedisCache(redisClient *redis.Client) *storage.RedisCache {
+	return storage.NewRedisCache(redisClient, "sqsmessaging")
+}
+
+func createIdempotencyStore(ctx context.Context) (*storage.IdempotencyStore, error) {
+	// Create Redis client
+	redisClient, err := createRedisClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create database connection
 	var db *gorm.DB
-	var err error
 
 	switch cfg.Database.Driver {
 	case "mysql":

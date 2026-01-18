@@ -127,3 +127,17 @@ type EventRegistry interface {
 	// ListEventTypes returns all registered event types
 	ListEventTypes() []string
 }
+
+// Cache defines the interface for caching operations
+type Cache interface {
+	// Get retrieves a value from the cache
+	Get(ctx context.Context, key string) (string, error)
+	// Set stores a value in the cache with optional TTL (0 means no expiration)
+	Set(ctx context.Context, key string, value string, ttl int) error
+	// Delete removes a value from the cache
+	Delete(ctx context.Context, key string) error
+	// DeleteByPrefix removes all values with the given prefix
+	DeleteByPrefix(ctx context.Context, prefix string) error
+	// Exists checks if a key exists in the cache
+	Exists(ctx context.Context, key string) (bool, error)
+}

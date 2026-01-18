@@ -12,7 +12,18 @@ import (
 	"github.com/spf13/cobra"
 
 	sqsdriver "github.com/our-edu/go-sqs-messaging/internal/drivers/sqs"
+	"github.com/our-edu/go-sqs-messaging/internal/storage"
 )
+
+// createResolverWithCache creates a Resolver with Redis cache (used by CLI commands)
+func createResolverWithCache(ctx context.Context, sqsClient *sqs.Client) (*sqsdriver.Resolver, error) {
+	redisClient, err := createRedisClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Redis client: %w", err)
+	}
+	cache := storage.NewRedisCache(redisClient, "sqsmessaging")
+	return sqsdriver.NewResolver(sqsClient, cfg, logger, cache), nil
+}
 
 // newEnsureCmd creates the ensure command (equivalent to sqs:ensure)
 func newEnsureCmd() *cobra.Command {
@@ -37,7 +48,10 @@ func runEnsure(ctx context.Context) error {
 		return fmt.Errorf("failed to create SQS client: %w", err)
 	}
 
-	resolver := sqsdriver.NewResolver(sqsClient, cfg, logger)
+	resolver, err := createResolverWithCache(ctx, sqsClient)
+	if err != nil {
+		return fmt.Errorf("failed to create resolver: %w", err)
+	}
 
 	// Get all queues from config
 	queuesCreated := 0
@@ -108,7 +122,10 @@ func runStatus(ctx context.Context, queueName string) error {
 		return fmt.Errorf("failed to create SQS client: %w", err)
 	}
 
-	resolver := sqsdriver.NewResolver(sqsClient, cfg, logger)
+	resolver, err := createResolverWithCache(ctx, sqsClient)
+	if err != nil {
+		return fmt.Errorf("failed to create resolver: %w", err)
+	}
 	consumer := sqsdriver.NewConsumer(sqsClient, resolver, cfg, logger)
 
 	if err := consumer.SetQueue(ctx, queueName); err != nil {
@@ -202,7 +219,10 @@ func runInspectDlq(ctx context.Context, queueName string, limit int) error {
 		return fmt.Errorf("failed to create SQS client: %w", err)
 	}
 
-	resolver := sqsdriver.NewResolver(sqsClient, cfg, logger)
+	resolver, err := createResolverWithCache(ctx, sqsClient)
+	if err != nil {
+		return fmt.Errorf("failed to create resolver: %w", err)
+	}
 	consumer := sqsdriver.NewConsumer(sqsClient, resolver, cfg, logger)
 
 	messages, err := consumer.ReceiveFromDLQ(ctx, queueName, limit)
@@ -263,7 +283,10 @@ func runMonitorDlq(ctx context.Context, queueName string, threshold int) error {
 		return fmt.Errorf("failed to create SQS client: %w", err)
 	}
 
-	resolver := sqsdriver.NewResolver(sqsClient, cfg, logger)
+	resolver, err := createResolverWithCache(ctx, sqsClient)
+	if err != nil {
+		return fmt.Errorf("failed to create resolver: %w", err)
+	}
 	consumer := sqsdriver.NewConsumer(sqsClient, resolver, cfg, logger)
 
 	depth, err := consumer.GetDLQDepth(ctx, queueName)
@@ -310,7 +333,10 @@ func runReplayDlq(ctx context.Context, queueName string, limit int) error {
 		return fmt.Errorf("failed to create SQS client: %w", err)
 	}
 
-	resolver := sqsdriver.NewResolver(sqsClient, cfg, logger)
+	resolver, err := createResolverWithCache(ctx, sqsClient)
+	if err != nil {
+		return fmt.Errorf("failed to create resolver: %w", err)
+	}
 	consumer := sqsdriver.NewConsumer(sqsClient, resolver, cfg, logger)
 
 	// Receive messages from DLQ
@@ -412,7 +438,10 @@ func runTestReceive(ctx context.Context, queueName, eventType string, send bool)
 		return fmt.Errorf("failed to create SQS client: %w", err)
 	}
 
-	resolver := sqsdriver.NewResolver(sqsClient, cfg, logger)
+	resolver, err := createResolverWithCache(ctx, sqsClient)
+	if err != nil {
+		return fmt.Errorf("failed to create resolver: %w", err)
+	}
 	consumer := sqsdriver.NewConsumer(sqsClient, resolver, cfg, logger)
 
 	if err := consumer.SetQueue(ctx, queueName); err != nil {

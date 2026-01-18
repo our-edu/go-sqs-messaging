@@ -17,17 +17,21 @@ import (
 
 func main() {
 	// Create a new client for the notification service
+	// Note: Redis is required for queue URL caching
 	client, err := sqsmessaging.New(
 		// AWS Configuration
 		sqsmessaging.WithAWSRegion("us-east-2"),
 
 		// LocalStack Configuration for local development
-		// sqsmessaging.WithAWSEndpoint("http://localhost:4566"),
+		sqsmessaging.WithAWSEndpoint("http://localhost:4566"),
 		sqsmessaging.WithAWSCredentials("test", "test"),
 
 		// Queue Configuration
 		sqsmessaging.WithQueuePrefix("dev"),
 		sqsmessaging.WithService("notification-service"),
+
+		// Redis Configuration (required for queue URL caching)
+		sqsmessaging.WithRedis("localhost:6379", "", 0),
 	)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)

@@ -15,6 +15,7 @@ import (
 
 func main() {
 	// Create a new client with configuration options
+	// Note: Redis is required for queue URL caching
 	client, err := sqsmessaging.New(
 		// AWS Configuration
 		sqsmessaging.WithAWSRegion("us-east-2"),
@@ -27,8 +28,10 @@ func main() {
 		sqsmessaging.WithQueuePrefix("dev"),
 		sqsmessaging.WithService("order-service"),
 
-		// Optional: Redis for idempotency (uncomment if using)
-		// sqsmessaging.WithRedis("localhost:6379", "", 0),
+		// Redis Configuration (required for queue URL caching)
+		sqsmessaging.WithRedis("localhost:6379", "", 0),
+
+		// Optional: Database for idempotency persistence (uncomment if using)
 		// sqsmessaging.WithDatabase(db), // GORM database instance
 	)
 	if err != nil {
