@@ -245,6 +245,31 @@ func WithLongRunningEvents(eventTypes ...string) Option {
 	}
 }
 
+// WithEventTimeouts sets the visibility timeout mapping for specific event types.
+// When a message with a matching event type is received, the visibility timeout
+// will be changed to the specified value (in seconds) before processing begins.
+// This allows different events to have different processing time allowances.
+//
+// Example:
+//
+//	client, err := sqsmessaging.New(
+//	    sqsmessaging.WithEventTimeouts(map[string]int{
+//	        "VideoProcessing":   600,  // 10 minutes
+//	        "ReportGeneration":  300,  // 5 minutes
+//	        "ImageResize":       120,  // 2 minutes
+//	    }),
+//	)
+func WithEventTimeouts(timeouts map[string]int) Option {
+	return func(o *Options) {
+		if o.config.SQS.EventTimeouts == nil {
+			o.config.SQS.EventTimeouts = make(map[string]int)
+		}
+		for eventType, timeout := range timeouts {
+			o.config.SQS.EventTimeouts[eventType] = timeout
+		}
+	}
+}
+
 // WithTargetQueueMappings sets the event type to queue name mappings.
 //
 // Example:

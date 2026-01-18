@@ -241,3 +241,104 @@ func TestDatabaseConfigDefaults(t *testing.T) {
 		t.Errorf("expected Database.Port 3306, got %d", cfg.Database.Port)
 	}
 }
+
+func TestGetEventTimeout(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.SQS.EventTimeouts = map[string]int{
+		"VideoProcessing":  600,
+		"ReportGeneration": 300,
+		"ImageResize":      120,
+	}
+
+	tests := []struct {
+		name           string
+		eventType      string
+		expectedTime   int
+		expectedExists bool
+	}{
+		{"configured event - video", "VideoProcessing", 600, true},
+		{"configured event - report", "ReportGeneration", 300, true},
+		{"configured event - image", "ImageResize", 120, true},
+		{"unconfigured event", "OrderCreated", 0, false},
+		{"empty string", "", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			timeout, exists := cfg.GetEventTimeout(tt.eventType)
+
+			if timeout != tt.expectedTime {
+				t.Errorf("expected timeout %d, got %d", tt.expectedTime, timeout)
+			}
+			if exists != tt.expectedExists {
+				t.Errorf("expected exists %v, got %v", tt.expectedExists, exists)
+			}
+		})
+	}
+}
+
+func TestGetEventTimeout_NilMap(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.SQS.EventTimeouts = nil
+
+	timeout, exists := cfg.GetEventTimeout("VideoProcessing")
+
+	if timeout != 0 {
+		t.Errorf("expected timeout 0 for nil map, got %d", timeout)
+	}
+	if exists {
+		t.Error("expected exists to be false for nil map")
+	}
+}
+
+func TestSetEventTimeout(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// Set timeouts
+	cfg.SetEventTimeout("VideoProcessing", 600)
+	cfg.SetEventTimeout("ReportGeneration", 300)
+
+	// Verify they were set
+	if timeout, exists := cfg.GetEventTimeout("VideoProcessing"); !exists || timeout != 600 {
+		t.Errorf("expected timeout 600, got %d (exists: %v)", timeout, exists)
+	}
+	if timeout, exists := cfg.GetEventTimeout("ReportGeneration"); !exists || timeout != 300 {
+		t.Errorf("expected timeout 300, got %d (exists: %v)", timeout, exists)
+	}
+}
+
+func TestSetEventTimeout_NilMap(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.SQS.EventTimeouts = nil
+
+	// Should initialize map and set value
+	cfg.SetEventTimeout("VideoProcessing", 600)
+
+	if cfg.SQS.EventTimeouts == nil {
+		t.Error("expected EventTimeouts map to be initialized")
+	}
+	if timeout, exists := cfg.GetEventTimeout("VideoProcessing"); !exists || timeout != 600 {
+		t.Errorf("expected timeout 600, got %d (exists: %v)", timeout, exists)
+	}
+}
+
+func TestSetEventTimeout_Override(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.SetEventTimeout("VideoProcessing", 600)
+
+	// Override with new value
+	cfg.SetEventTimeout("VideoProcessing", 900)
+
+	if timeout, exists := cfg.GetEventTimeout("VideoProcessing"); !exists || timeout != 900 {
+		t.Errorf("expected timeout 900 after override, got %d (exists: %v)", timeout, exists)
+	}
+}
+
+func TestEventTimeouts_Initialized(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// EventTimeouts should be initialized (not nil)
+	if cfg.SQS.EventTimeouts == nil {
+		t.Error("expected EventTimeouts to be initialized")
+	}
+}

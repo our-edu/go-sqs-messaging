@@ -47,6 +47,10 @@ type SQSConfig struct {
 	AutoEnsure bool `json:"auto_ensure" yaml:"auto_ensure"`
 	// LongRunningEvents is a list of event types that need extended visibility timeout
 	LongRunningEvents []string `json:"long_running_events" yaml:"long_running_events"`
+	// EventTimeouts maps event types to their specific visibility timeout in seconds.
+	// When a message with a matching event type is received, the visibility timeout
+	// will be changed to the specified value before processing begins.
+	EventTimeouts map[string]int `json:"event_timeouts" yaml:"event_timeouts"`
 	// VisibilityTimeout is the default visibility timeout in seconds
 	VisibilityTimeout int `json:"visibility_timeout" yaml:"visibility_timeout"`
 	// LongPollingWait is the wait time for long polling in seconds
@@ -127,6 +131,7 @@ func DefaultConfig() *Config {
 			Prefix:             "dev",
 			AutoEnsure:         false,
 			LongRunningEvents:  []string{},
+			EventTimeouts:      make(map[string]int),
 			VisibilityTimeout:  30,
 			LongPollingWait:    20,
 			MessageRetention:   14,
@@ -185,6 +190,25 @@ func (c *Config) IsLongRunningEvent(eventType string) bool {
 		}
 	}
 	return false
+}
+
+// GetEventTimeout returns the visibility timeout for a specific event type.
+// Returns the timeout in seconds and true if a specific timeout is configured,
+// or 0 and false if using the default timeout.
+func (c *Config) GetEventTimeout(eventType string) (int, bool) {
+	if c.SQS.EventTimeouts == nil {
+		return 0, false
+	}
+	timeout, exists := c.SQS.EventTimeouts[eventType]
+	return timeout, exists
+}
+
+// SetEventTimeout sets a visibility timeout for a specific event type.
+func (c *Config) SetEventTimeout(eventType string, timeoutSeconds int) {
+	if c.SQS.EventTimeouts == nil {
+		c.SQS.EventTimeouts = make(map[string]int)
+	}
+	c.SQS.EventTimeouts[eventType] = timeoutSeconds
 }
 
 // GetTargetQueue returns the target queue for an event type

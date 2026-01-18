@@ -145,9 +145,23 @@ func (c *Client) processInternalMessage(ctx context.Context, msg contracts.Messa
 		defer c.idempotencyStore.ClearProcessing(ctx, idempotencyKey)
 	}
 
-	// Extend visibility for long-running events
-	if c.config.IsLongRunningEvent(eventType) {
-		c.consumer.ChangeVisibilityTimeout(ctx, receiptHandle, 300) // 5 minutes
+	// Change visibility timeout based on event type configuration (before processing starts)
+	if timeout, exists := c.config.GetEventTimeout(eventType); exists {
+		if err := c.consumer.ChangeVisibilityTimeout(ctx, receiptHandle, timeout); err != nil {
+			c.logger.Warn().
+				Str("event_type", eventType).
+				Int("timeout", timeout).
+				Err(err).
+				Msg("Failed to change visibility timeout for event")
+		} else {
+			c.logger.Debug().
+				Str("event_type", eventType).
+				Int("timeout", timeout).
+				Msg("Changed visibility timeout for event")
+		}
+	} else if c.config.IsLongRunningEvent(eventType) {
+		// Fallback to legacy long-running events (5 minutes)
+		c.consumer.ChangeVisibilityTimeout(ctx, receiptHandle, 300)
 	}
 
 	// Get handler
@@ -533,9 +547,23 @@ func (c *Client) processMessageWithURL(ctx context.Context, queueURL string, msg
 		defer c.idempotencyStore.ClearProcessing(ctx, idempotencyKey)
 	}
 
-	// Extend visibility for long-running events
-	if c.config.IsLongRunningEvent(eventType) {
-		c.changeVisibilityTimeoutWithURL(ctx, queueURL, receiptHandle, 300) // 5 minutes
+	// Change visibility timeout based on event type configuration (before processing starts)
+	if timeout, exists := c.config.GetEventTimeout(eventType); exists {
+		if err := c.changeVisibilityTimeoutWithURL(ctx, queueURL, receiptHandle, timeout); err != nil {
+			c.logger.Warn().
+				Str("event_type", eventType).
+				Int("timeout", timeout).
+				Err(err).
+				Msg("Failed to change visibility timeout for event")
+		} else {
+			c.logger.Debug().
+				Str("event_type", eventType).
+				Int("timeout", timeout).
+				Msg("Changed visibility timeout for event")
+		}
+	} else if c.config.IsLongRunningEvent(eventType) {
+		// Fallback to legacy long-running events (5 minutes)
+		c.changeVisibilityTimeoutWithURL(ctx, queueURL, receiptHandle, 300)
 	}
 
 	// Get handler
