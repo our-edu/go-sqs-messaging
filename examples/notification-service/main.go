@@ -107,7 +107,7 @@ func main() {
 
 // User Service Notification Handlers
 
-func handleUserRegistered(ctx context.Context, payload map[string]interface{}) error {
+func handleUserRegistered(ctx context.Context, payload map[string]any) error {
 	userID, _ := payload["user_id"].(string)
 	email, _ := payload["email"].(string)
 
@@ -119,7 +119,7 @@ func handleUserRegistered(ctx context.Context, payload map[string]interface{}) e
 	return nil
 }
 
-func handleUserPasswordReset(ctx context.Context, payload map[string]interface{}) error {
+func handleUserPasswordReset(ctx context.Context, payload map[string]any) error {
 	userID, _ := payload["user_id"].(string)
 	email, _ := payload["email"].(string)
 	resetToken, _ := payload["reset_token"].(string)
@@ -132,7 +132,7 @@ func handleUserPasswordReset(ctx context.Context, payload map[string]interface{}
 	return nil
 }
 
-func handleUserEmailVerified(ctx context.Context, payload map[string]interface{}) error {
+func handleUserEmailVerified(ctx context.Context, payload map[string]any) error {
 	userID, _ := payload["user_id"].(string)
 	email, _ := payload["email"].(string)
 
@@ -143,7 +143,7 @@ func handleUserEmailVerified(ctx context.Context, payload map[string]interface{}
 
 // Order Service Notification Handlers
 
-func handleOrderCreated(ctx context.Context, payload map[string]interface{}) error {
+func handleOrderCreated(ctx context.Context, payload map[string]any) error {
 	orderID, _ := payload["order_id"].(string)
 	customerEmail, _ := payload["customer_email"].(string)
 	total, _ := payload["total"].(float64)
@@ -156,7 +156,7 @@ func handleOrderCreated(ctx context.Context, payload map[string]interface{}) err
 	return nil
 }
 
-func handleOrderShipped(ctx context.Context, payload map[string]interface{}) error {
+func handleOrderShipped(ctx context.Context, payload map[string]any) error {
 	orderID, _ := payload["order_id"].(string)
 	customerEmail, _ := payload["customer_email"].(string)
 	trackingNumber, _ := payload["tracking_number"].(string)
@@ -166,7 +166,7 @@ func handleOrderShipped(ctx context.Context, payload map[string]interface{}) err
 	return nil
 }
 
-func handleOrderDelivered(ctx context.Context, payload map[string]interface{}) error {
+func handleOrderDelivered(ctx context.Context, payload map[string]any) error {
 	orderID, _ := payload["order_id"].(string)
 	customerEmail, _ := payload["customer_email"].(string)
 
@@ -177,7 +177,7 @@ func handleOrderDelivered(ctx context.Context, payload map[string]interface{}) e
 
 // Payment Service Notification Handlers
 
-func handlePaymentSuccessful(ctx context.Context, payload map[string]interface{}) error {
+func handlePaymentSuccessful(ctx context.Context, payload map[string]any) error {
 	paymentID, _ := payload["payment_id"].(string)
 	customerEmail, _ := payload["customer_email"].(string)
 	amount, _ := payload["amount"].(float64)
@@ -187,7 +187,7 @@ func handlePaymentSuccessful(ctx context.Context, payload map[string]interface{}
 	return nil
 }
 
-func handlePaymentFailed(ctx context.Context, payload map[string]interface{}) error {
+func handlePaymentFailed(ctx context.Context, payload map[string]any) error {
 	paymentID, _ := payload["payment_id"].(string)
 	customerEmail, _ := payload["customer_email"].(string)
 	reason, _ := payload["reason"].(string)
@@ -197,7 +197,7 @@ func handlePaymentFailed(ctx context.Context, payload map[string]interface{}) er
 	return nil
 }
 
-func handleRefundProcessed(ctx context.Context, payload map[string]interface{}) error {
+func handleRefundProcessed(ctx context.Context, payload map[string]any) error {
 	refundID, _ := payload["refund_id"].(string)
 	customerEmail, _ := payload["customer_email"].(string)
 	amount, _ := payload["amount"].(float64)

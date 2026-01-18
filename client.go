@@ -27,13 +27,13 @@
 //	defer client.Close()
 //
 //	// Publish a message
-//	err = client.Publish(ctx, "UserCreated", map[string]interface{}{
+//	err = client.Publish(ctx, "UserCreated", map[string]any{
 //	    "user_id": 123,
 //	    "email":   "user@example.com",
 //	})
 //
 //	// Consume messages
-//	client.RegisterHandler("UserCreated", func(ctx context.Context, payload map[string]interface{}) error {
+//	client.RegisterHandler("UserCreated", func(ctx context.Context, payload map[string]any) error {
 //	    // Handle the event
 //	    return nil
 //	})
@@ -233,11 +233,11 @@ func (c *Client) Close() error {
 //
 // Example:
 //
-//	err := client.Publish(ctx, "OrderCreated", map[string]interface{}{
+//	err := client.Publish(ctx, "OrderCreated", map[string]any{
 //	    "order_id": "12345",
 //	    "amount":   99.99,
 //	})
-func (c *Client) Publish(ctx context.Context, eventType string, payload map[string]interface{}) error {
+func (c *Client) Publish(ctx context.Context, eventType string, payload map[string]any) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -253,7 +253,7 @@ func (c *Client) Publish(ctx context.Context, eventType string, payload map[stri
 // Example:
 //
 //	msgID, err := client.PublishToQueue(ctx, "my-queue", "OrderCreated", payload)
-func (c *Client) PublishToQueue(ctx context.Context, queueName, eventType string, payload map[string]interface{}) (string, error) {
+func (c *Client) PublishToQueue(ctx context.Context, queueName, eventType string, payload map[string]any) (string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -313,7 +313,7 @@ func (c *Client) PublishBatch(ctx context.Context, queueName string, messages []
 //
 // Example:
 //
-//	client.RegisterHandler("OrderCreated", func(ctx context.Context, payload map[string]interface{}) error {
+//	client.RegisterHandler("OrderCreated", func(ctx context.Context, payload map[string]any) error {
 //	    orderID := payload["order_id"].(string)
 //	    // Process the order...
 //	    return nil

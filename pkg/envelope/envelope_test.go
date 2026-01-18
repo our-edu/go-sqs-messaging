@@ -7,7 +7,7 @@ import (
 )
 
 func TestWrap(t *testing.T) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"user_id": "123",
 		"email":   "test@example.com",
 	}
@@ -38,7 +38,7 @@ func TestWrap(t *testing.T) {
 }
 
 func TestWrap_ExtractsTraceID(t *testing.T) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"user_id":  "123",
 		"trace_id": "existing-trace-id",
 	}
@@ -51,7 +51,7 @@ func TestWrap_ExtractsTraceID(t *testing.T) {
 }
 
 func TestWrap_ExtractsTraceIdCamelCase(t *testing.T) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"user_id": "123",
 		"traceId": "existing-trace-id-camel",
 	}
@@ -64,12 +64,12 @@ func TestWrap_ExtractsTraceIdCamelCase(t *testing.T) {
 }
 
 func TestWrap_IdempotencyExcludesTemporaryFields(t *testing.T) {
-	payload1 := map[string]interface{}{
+	payload1 := map[string]any{
 		"user_id":    "123",
 		"timestamp":  "2024-01-01T00:00:00Z",
 		"created_at": "2024-01-01T00:00:00Z",
 	}
-	payload2 := map[string]interface{}{
+	payload2 := map[string]any{
 		"user_id":    "123",
 		"timestamp":  "2024-01-02T00:00:00Z",
 		"created_at": "2024-01-02T00:00:00Z",
@@ -85,8 +85,8 @@ func TestWrap_IdempotencyExcludesTemporaryFields(t *testing.T) {
 }
 
 func TestWrap_DifferentPayloadsProduceDifferentKeys(t *testing.T) {
-	payload1 := map[string]interface{}{"user_id": "123"}
-	payload2 := map[string]interface{}{"user_id": "456"}
+	payload1 := map[string]any{"user_id": "123"}
+	payload2 := map[string]any{"user_id": "456"}
 
 	env1 := Wrap("UserCreated", payload1, "user-service")
 	env2 := Wrap("UserCreated", payload2, "user-service")
@@ -97,7 +97,7 @@ func TestWrap_DifferentPayloadsProduceDifferentKeys(t *testing.T) {
 }
 
 func TestWrap_DifferentEventTypesProduceDifferentKeys(t *testing.T) {
-	payload := map[string]interface{}{"user_id": "123"}
+	payload := map[string]any{"user_id": "123"}
 
 	env1 := Wrap("UserCreated", payload, "user-service")
 	env2 := Wrap("UserUpdated", payload, "user-service")
@@ -108,7 +108,7 @@ func TestWrap_DifferentEventTypesProduceDifferentKeys(t *testing.T) {
 }
 
 func TestUnwrap(t *testing.T) {
-	payload := map[string]interface{}{"user_id": "123"}
+	payload := map[string]any{"user_id": "123"}
 	env := Wrap("UserCreated", payload, "user-service")
 
 	result := Unwrap(env)
@@ -127,7 +127,7 @@ func TestUnwrap_NilEnvelope(t *testing.T) {
 }
 
 func TestToJSON(t *testing.T) {
-	payload := map[string]interface{}{"user_id": "123"}
+	payload := map[string]any{"user_id": "123"}
 	env := Wrap("UserCreated", payload, "user-service")
 
 	jsonStr, err := env.ToJSON()
@@ -144,7 +144,7 @@ func TestToJSON(t *testing.T) {
 }
 
 func TestUnwrapJSON(t *testing.T) {
-	payload := map[string]interface{}{"user_id": "123"}
+	payload := map[string]any{"user_id": "123"}
 	env := Wrap("UserCreated", payload, "user-service")
 	jsonStr, _ := env.ToJSON()
 
@@ -180,14 +180,14 @@ func TestValidate(t *testing.T) {
 	}{
 		{
 			name:        "valid envelope",
-			envelope:    Wrap("UserCreated", map[string]interface{}{"id": "1"}, "test-service"),
+			envelope:    Wrap("UserCreated", map[string]any{"id": "1"}, "test-service"),
 			expectError: false,
 		},
 		{
 			name: "missing event_type",
 			envelope: &Envelope{
 				Service:        "test",
-				Payload:        map[string]interface{}{},
+				Payload:        map[string]any{},
 				IdempotencyKey: "key",
 				TraceID:        "trace",
 				Timestamp:      "2024-01-01",
@@ -200,7 +200,7 @@ func TestValidate(t *testing.T) {
 			name: "missing service",
 			envelope: &Envelope{
 				EventType:      "test",
-				Payload:        map[string]interface{}{},
+				Payload:        map[string]any{},
 				IdempotencyKey: "key",
 				TraceID:        "trace",
 				Timestamp:      "2024-01-01",
@@ -227,7 +227,7 @@ func TestValidate(t *testing.T) {
 			envelope: &Envelope{
 				EventType: "test",
 				Service:   "test",
-				Payload:   map[string]interface{}{},
+				Payload:   map[string]any{},
 				TraceID:   "trace",
 				Timestamp: "2024-01-01",
 				Version:   "1.0",
@@ -240,7 +240,7 @@ func TestValidate(t *testing.T) {
 			envelope: &Envelope{
 				EventType:      "test",
 				Service:        "test",
-				Payload:        map[string]interface{}{},
+				Payload:        map[string]any{},
 				IdempotencyKey: "key",
 				Timestamp:      "2024-01-01",
 				Version:        "1.0",
@@ -253,7 +253,7 @@ func TestValidate(t *testing.T) {
 			envelope: &Envelope{
 				EventType:      "test",
 				Service:        "test",
-				Payload:        map[string]interface{}{},
+				Payload:        map[string]any{},
 				IdempotencyKey: "key",
 				TraceID:        "trace",
 				Version:        "1.0",
@@ -266,7 +266,7 @@ func TestValidate(t *testing.T) {
 			envelope: &Envelope{
 				EventType:      "test",
 				Service:        "test",
-				Payload:        map[string]interface{}{},
+				Payload:        map[string]any{},
 				IdempotencyKey: "key",
 				TraceID:        "trace",
 				Timestamp:      "2024-01-01",
@@ -295,7 +295,7 @@ func TestValidate(t *testing.T) {
 }
 
 func TestGetEventType(t *testing.T) {
-	env := Wrap("UserCreated", map[string]interface{}{}, "test")
+	env := Wrap("UserCreated", map[string]any{}, "test")
 
 	if env.GetEventType() != "UserCreated" {
 		t.Errorf("expected 'UserCreated', got '%s'", env.GetEventType())
@@ -303,7 +303,7 @@ func TestGetEventType(t *testing.T) {
 }
 
 func TestGetTraceID(t *testing.T) {
-	env := Wrap("UserCreated", map[string]interface{}{}, "test")
+	env := Wrap("UserCreated", map[string]any{}, "test")
 
 	if env.GetTraceID() == "" {
 		t.Error("expected non-empty trace ID")
@@ -311,7 +311,7 @@ func TestGetTraceID(t *testing.T) {
 }
 
 func TestGetIdempotencyKey(t *testing.T) {
-	env := Wrap("UserCreated", map[string]interface{}{}, "test")
+	env := Wrap("UserCreated", map[string]any{}, "test")
 
 	if env.GetIdempotencyKey() == "" {
 		t.Error("expected non-empty idempotency key")
@@ -319,7 +319,7 @@ func TestGetIdempotencyKey(t *testing.T) {
 }
 
 func TestParseEnvelopeFromMessage(t *testing.T) {
-	payload := map[string]interface{}{"user_id": "123"}
+	payload := map[string]any{"user_id": "123"}
 	env := Wrap("UserCreated", payload, "user-service")
 	jsonStr, _ := env.ToJSON()
 
@@ -350,7 +350,7 @@ func TestParseEnvelopeFromMessage_InvalidEnvelope(t *testing.T) {
 }
 
 func TestRemoveTemporaryFields(t *testing.T) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"user_id":    "123",
 		"timestamp":  "2024-01-01",
 		"created_at": "2024-01-01",
@@ -358,7 +358,7 @@ func TestRemoveTemporaryFields(t *testing.T) {
 		"deleted_at": "2024-01-01",
 		"trace_id":   "trace",
 		"request_id": "request",
-		"nested": map[string]interface{}{
+		"nested": map[string]any{
 			"field":     "value",
 			"timestamp": "should-be-removed",
 		},
@@ -376,7 +376,7 @@ func TestRemoveTemporaryFields(t *testing.T) {
 		t.Error("expected user_id to be preserved")
 	}
 
-	nested := result["nested"].(map[string]interface{})
+	nested := result["nested"].(map[string]any)
 	if _, exists := nested["timestamp"]; exists {
 		t.Error("expected nested timestamp to be removed")
 	}
@@ -386,10 +386,10 @@ func TestRemoveTemporaryFields(t *testing.T) {
 }
 
 func TestSortMapRecursively(t *testing.T) {
-	input := map[string]interface{}{
+	input := map[string]any{
 		"z": "last",
 		"a": "first",
-		"nested": map[string]interface{}{
+		"nested": map[string]any{
 			"z": "nested-last",
 			"a": "nested-first",
 		},
@@ -408,7 +408,7 @@ func TestSortMapRecursively(t *testing.T) {
 
 func TestIdempotencyKeyDeterminism(t *testing.T) {
 	// Same payload should always produce the same idempotency key
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"z_field": "z",
 		"a_field": "a",
 		"m_field": "m",
@@ -423,10 +423,10 @@ func TestIdempotencyKeyDeterminism(t *testing.T) {
 }
 
 func TestIdempotencyKeyWithNestedArrays(t *testing.T) {
-	payload := map[string]interface{}{
-		"items": []interface{}{
-			map[string]interface{}{"id": "1", "name": "item1"},
-			map[string]interface{}{"id": "2", "name": "item2"},
+	payload := map[string]any{
+		"items": []any{
+			map[string]any{"id": "1", "name": "item1"},
+			map[string]any{"id": "2", "name": "item2"},
 		},
 	}
 

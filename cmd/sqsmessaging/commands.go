@@ -241,7 +241,7 @@ func runInspectDlq(ctx context.Context, queueName string, limit int) error {
 		fmt.Printf("Message ID: %s\n", msg.MessageID)
 
 		// Pretty print the body
-		var prettyBody map[string]interface{}
+		var prettyBody map[string]any
 		if err := json.Unmarshal([]byte(msg.Body), &prettyBody); err == nil {
 			prettyJSON, _ := json.MarshalIndent(prettyBody, "", "  ")
 			fmt.Printf("Body:\n%s\n", string(prettyJSON))
@@ -451,7 +451,7 @@ func runTestReceive(ctx context.Context, queueName, eventType string, send bool)
 	if send {
 		// Send test message
 		publisher := sqsdriver.NewPublisher(sqsClient, resolver, cfg, logger, "test-service")
-		testPayload := map[string]interface{}{
+		testPayload := map[string]any{
 			"test":      true,
 			"timestamp": fmt.Sprintf("%d", time.Now().Unix()),
 		}

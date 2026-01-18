@@ -10,7 +10,7 @@ type Event interface {
 	// EventType returns the event type identifier (e.g., "StudentEnrolled")
 	EventType() string
 	// Payload returns the event data as a map
-	Payload() map[string]interface{}
+	Payload() map[string]any
 }
 
 // MessagingDriver defines the interface for messaging drivers
@@ -18,7 +18,7 @@ type MessagingDriver interface {
 	// Publish sends an event through the messaging system
 	Publish(ctx context.Context, event Event) error
 	// PublishRaw sends a raw message with explicit event type and payload
-	PublishRaw(ctx context.Context, eventType string, payload map[string]interface{}) error
+	PublishRaw(ctx context.Context, eventType string, payload map[string]any) error
 	// Name returns the driver name
 	Name() string
 	// IsAvailable checks if the driver is available for the given event type
@@ -60,7 +60,7 @@ type MessageAttribute struct {
 // Publisher defines the interface for message publishers
 type Publisher interface {
 	// Publish sends a single message to the queue
-	Publish(ctx context.Context, queueName, eventType string, payload map[string]interface{}) (string, error)
+	Publish(ctx context.Context, queueName, eventType string, payload map[string]any) (string, error)
 	// PublishBatch sends multiple messages to the queue
 	PublishBatch(ctx context.Context, queueName string, messages []BatchMessage) ([]BatchResult, error)
 }
@@ -69,7 +69,7 @@ type Publisher interface {
 type BatchMessage struct {
 	ID        string
 	EventType string
-	Payload   map[string]interface{}
+	Payload   map[string]any
 }
 
 // BatchResult represents the result of a batch publish operation
@@ -116,7 +116,7 @@ type MetricsService interface {
 }
 
 // EventHandler defines the function signature for event handlers
-type EventHandler func(ctx context.Context, payload map[string]interface{}) error
+type EventHandler func(ctx context.Context, payload map[string]any) error
 
 // EventRegistry manages event type to handler mappings
 type EventRegistry interface {

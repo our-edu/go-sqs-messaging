@@ -8,14 +8,14 @@ import (
 // Handler is a function that handles incoming messages.
 // It receives the context and the message payload.
 // Return nil for success, or an error to indicate failure.
-type Handler func(ctx context.Context, payload map[string]interface{}) error
+type Handler func(ctx context.Context, payload map[string]any) error
 
 // Event represents a publishable event.
 type Event interface {
 	// EventType returns the event type identifier (e.g., "UserCreated")
 	EventType() string
 	// Payload returns the event data as a map
-	Payload() map[string]interface{}
+	Payload() map[string]any
 }
 
 // Message represents a received message from SQS.
@@ -31,7 +31,7 @@ type Message struct {
 	// EventType is extracted from the message envelope
 	EventType string
 	// Payload is the parsed message payload
-	Payload map[string]interface{}
+	Payload map[string]any
 	// IdempotencyKey is the unique key for deduplication
 	IdempotencyKey string
 	// TraceID for distributed tracing
@@ -45,7 +45,7 @@ type BatchMessage struct {
 	// EventType is the type of event
 	EventType string
 	// Payload is the message data
-	Payload map[string]interface{}
+	Payload map[string]any
 }
 
 // BatchResult represents the result of a batch publish operation.

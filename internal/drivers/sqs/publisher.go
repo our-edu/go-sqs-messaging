@@ -34,7 +34,7 @@ func NewPublisher(client *sqs.Client, resolver *Resolver, cfg *config.Config, lo
 }
 
 // Publish sends a single message to the queue
-func (p *Publisher) Publish(ctx context.Context, queueName, eventType string, payload map[string]interface{}) (string, error) {
+func (p *Publisher) Publish(ctx context.Context, queueName, eventType string, payload map[string]any) (string, error) {
 	// Resolve queue URL
 	queueURL, err := p.resolver.Resolve(ctx, queueName)
 	if err != nil {
@@ -166,7 +166,7 @@ func (a *PublisherAdapter) Publish(ctx context.Context, event contracts.Event) (
 }
 
 // PublishRaw publishes raw event data
-func (a *PublisherAdapter) PublishRaw(ctx context.Context, eventType string, payload map[string]interface{}) (string, error) {
+func (a *PublisherAdapter) PublishRaw(ctx context.Context, eventType string, payload map[string]any) (string, error) {
 	targetQueue := a.targetResolver.Resolve(eventType)
 	return a.publisher.Publish(ctx, targetQueue, eventType, payload)
 }

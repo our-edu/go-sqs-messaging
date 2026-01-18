@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -21,13 +22,13 @@ const (
 
 // Envelope represents a standardized message wrapper
 type Envelope struct {
-	EventType      string                 `json:"event_type"`
-	Service        string                 `json:"service"`
-	Payload        map[string]interface{} `json:"payload"`
-	IdempotencyKey string                 `json:"idempotency_key"`
-	TraceID        string                 `json:"trace_id"`
-	Timestamp      string                 `json:"timestamp"`
-	Version        string                 `json:"version"`
+	EventType      string         `json:"event_type"`
+	Service        string         `json:"service"`
+	Payload        map[string]any `json:"payload"`
+	IdempotencyKey string         `json:"idempotency_key"`
+	TraceID        string         `json:"trace_id"`
+	Timestamp      string         `json:"timestamp"`
+	Version        string         `json:"version"`
 }
 
 // temporaryFields are fields that should be excluded from idempotency key generation
@@ -41,7 +42,7 @@ var temporaryFields = []string{
 }
 
 // Wrap creates a new envelope for the given event type and payload
-func Wrap(eventType string, payload map[string]interface{}, service string) *Envelope {
+func Wrap(eventType string, payload map[string]any, service string) *Envelope {
 	// Generate idempotency key
 	cleanPayload := removeTemporaryFields(payload)
 	idempotencyKey := generateIdempotencyKey(eventType, cleanPayload)
@@ -64,7 +65,7 @@ func Wrap(eventType string, payload map[string]interface{}, service string) *Env
 }
 
 // Unwrap extracts the payload from an envelope
-func Unwrap(envelope *Envelope) map[string]interface{} {
+func Unwrap(envelope *Envelope) map[string]any {
 	if envelope == nil {
 		return nil
 	}
@@ -131,19 +132,12 @@ func (e *Envelope) GetIdempotencyKey() string {
 }
 
 // removeTemporaryFields removes fields that shouldn't affect idempotency
-func removeTemporaryFields(payload map[string]interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
+func removeTemporaryFields(payload map[string]any) map[string]any {
+	result := make(map[string]any)
 	for k, v := range payload {
-		skip := false
-		for _, tf := range temporaryFields {
-			if k == tf {
-				skip = true
-				break
-			}
-		}
-		if !skip {
+		if !slices.Contains(temporaryFields, k) {
 			// Recursively clean nested maps
-			if nested, ok := v.(map[string]interface{}); ok {
+			if nested, ok := v.(map[string]any); ok {
 				result[k] = removeTemporaryFields(nested)
 			} else {
 				result[k] = v
@@ -154,7 +148,7 @@ func removeTemporaryFields(payload map[string]interface{}) map[string]interface{
 }
 
 // generateIdempotencyKey creates a deterministic hash from event type and payload
-func generateIdempotencyKey(eventType string, payload map[string]interface{}) string {
+func generateIdempotencyKey(eventType string, payload map[string]any) string {
 	sortedPayload := sortMapRecursively(payload)
 	payloadJSON, _ := json.Marshal(sortedPayload)
 
@@ -164,8 +158,8 @@ func generateIdempotencyKey(eventType string, payload map[string]interface{}) st
 }
 
 // sortMapRecursively sorts map keys recursively for deterministic serialization
-func sortMapRecursively(m map[string]interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
+func sortMapRecursively(m map[string]any) map[string]any {
+	result := make(map[string]any)
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -174,9 +168,9 @@ func sortMapRecursively(m map[string]interface{}) map[string]interface{} {
 
 	for _, k := range keys {
 		v := m[k]
-		if nested, ok := v.(map[string]interface{}); ok {
+		if nested, ok := v.(map[string]any); ok {
 			result[k] = sortMapRecursively(nested)
-		} else if arr, ok := v.([]interface{}); ok {
+		} else if arr, ok := v.([]any); ok {
 			result[k] = sortArrayRecursively(arr)
 		} else {
 			result[k] = v
@@ -186,10 +180,10 @@ func sortMapRecursively(m map[string]interface{}) map[string]interface{} {
 }
 
 // sortArrayRecursively sorts arrays containing maps
-func sortArrayRecursively(arr []interface{}) []interface{} {
-	result := make([]interface{}, len(arr))
+func sortArrayRecursively(arr []any) []any {
+	result := make([]any, len(arr))
 	for i, v := range arr {
-		if m, ok := v.(map[string]interface{}); ok {
+		if m, ok := v.(map[string]any); ok {
 			result[i] = sortMapRecursively(m)
 		} else {
 			result[i] = v
@@ -199,7 +193,7 @@ func sortArrayRecursively(arr []interface{}) []interface{} {
 }
 
 // extractTraceID extracts an existing trace ID from the payload if present
-func extractTraceID(payload map[string]interface{}) string {
+func extractTraceID(payload map[string]any) string {
 	if traceID, ok := payload["trace_id"].(string); ok {
 		return traceID
 	}

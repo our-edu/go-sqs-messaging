@@ -126,7 +126,7 @@ func (r *Resolver) CreateQueueWithDLQ(ctx context.Context, queueName string) (st
 	dlqArn := dlqAttrs.Attributes[string(types.QueueAttributeNameQueueArn)]
 
 	// Create redrive policy
-	redrivePolicy := map[string]interface{}{
+	redrivePolicy := map[string]any{
 		"deadLetterTargetArn": dlqArn,
 		"maxReceiveCount":     r.config.SQS.DLQMaxReceiveCount,
 	}

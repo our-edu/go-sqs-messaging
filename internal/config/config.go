@@ -108,7 +108,7 @@ type ServiceQueues struct {
 type QueuesConfig map[string]ServiceQueues
 
 // EventHandler represents a handler function for an event type
-type EventHandler func(payload map[string]interface{}) error
+type EventHandler func(payload map[string]any) error
 
 // EventsConfig maps event types to their handlers
 type EventsConfig map[string]EventHandler

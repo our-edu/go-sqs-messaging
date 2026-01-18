@@ -20,7 +20,7 @@ func TestNewEventRegistry(t *testing.T) {
 func TestEventRegistry_Register(t *testing.T) {
 	registry := NewEventRegistry()
 	called := false
-	handler := func(ctx context.Context, payload map[string]interface{}) error {
+	handler := func(ctx context.Context, payload map[string]any) error {
 		called = true
 		return nil
 	}
@@ -54,11 +54,11 @@ func TestEventRegistry_Register_Overwrite(t *testing.T) {
 	registry := NewEventRegistry()
 	callCount := 0
 
-	handler1 := func(ctx context.Context, payload map[string]interface{}) error {
+	handler1 := func(ctx context.Context, payload map[string]any) error {
 		callCount = 1
 		return nil
 	}
-	handler2 := func(ctx context.Context, payload map[string]interface{}) error {
+	handler2 := func(ctx context.Context, payload map[string]any) error {
 		callCount = 2
 		return nil
 	}
@@ -76,7 +76,7 @@ func TestEventRegistry_Register_Overwrite(t *testing.T) {
 
 func TestEventRegistry_ListEventTypes(t *testing.T) {
 	registry := NewEventRegistry()
-	handler := func(ctx context.Context, payload map[string]interface{}) error {
+	handler := func(ctx context.Context, payload map[string]any) error {
 		return nil
 	}
 
@@ -116,7 +116,7 @@ func TestEventRegistry_ListEventTypes_Empty(t *testing.T) {
 
 func TestEventRegistry_ConcurrentAccess(t *testing.T) {
 	registry := NewEventRegistry()
-	handler := func(ctx context.Context, payload map[string]interface{}) error {
+	handler := func(ctx context.Context, payload map[string]any) error {
 		return nil
 	}
 
@@ -160,7 +160,7 @@ func TestEventRegistry_ConcurrentAccess(t *testing.T) {
 
 func TestEventRegistry_ConcurrentReadWrite(t *testing.T) {
 	registry := NewEventRegistry()
-	handler := func(ctx context.Context, payload map[string]interface{}) error {
+	handler := func(ctx context.Context, payload map[string]any) error {
 		return nil
 	}
 

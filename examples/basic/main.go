@@ -57,11 +57,11 @@ func main() {
 	}
 
 	// Example: Publish a message
-	err = client.Publish(ctx, "OrderCreated", map[string]interface{}{
+	err = client.Publish(ctx, "OrderCreated", map[string]any{
 		"order_id":    "ORD-12345",
 		"customer_id": "CUST-789",
 		"total":       99.99,
-		"items": []map[string]interface{}{
+		"items": []map[string]any{
 			{"sku": "PROD-001", "quantity": 2, "price": 49.99},
 		},
 	})
@@ -74,12 +74,12 @@ func main() {
 		{
 			ID:        "msg-1",
 			EventType: "OrderCreated",
-			Payload:   map[string]interface{}{"order_id": "ORD-001"},
+			Payload:   map[string]any{"order_id": "ORD-001"},
 		},
 		{
 			ID:        "msg-2",
 			EventType: "OrderCreated",
-			Payload:   map[string]interface{}{"order_id": "ORD-002"},
+			Payload:   map[string]any{"order_id": "ORD-002"},
 		},
 	})
 	if err != nil {
@@ -120,7 +120,7 @@ func main() {
 
 // Event Handlers
 
-func handleOrderCreated(ctx context.Context, payload map[string]interface{}) error {
+func handleOrderCreated(ctx context.Context, payload map[string]any) error {
 	orderID, _ := payload["order_id"].(string)
 	customerID, _ := payload["customer_id"].(string)
 
@@ -143,7 +143,7 @@ func handleOrderCreated(ctx context.Context, payload map[string]interface{}) err
 	return nil
 }
 
-func handleOrderUpdated(ctx context.Context, payload map[string]interface{}) error {
+func handleOrderUpdated(ctx context.Context, payload map[string]any) error {
 	orderID, _ := payload["order_id"].(string)
 	status, _ := payload["status"].(string)
 
@@ -151,7 +151,7 @@ func handleOrderUpdated(ctx context.Context, payload map[string]interface{}) err
 	return nil
 }
 
-func handlePaymentProcessed(ctx context.Context, payload map[string]interface{}) error {
+func handlePaymentProcessed(ctx context.Context, payload map[string]any) error {
 	paymentID, _ := payload["payment_id"].(string)
 	amount, _ := payload["amount"].(float64)
 

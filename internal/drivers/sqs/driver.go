@@ -33,7 +33,7 @@ func (d *Driver) Publish(ctx context.Context, event contracts.Event) error {
 }
 
 // PublishRaw sends a raw message with explicit event type and payload
-func (d *Driver) PublishRaw(ctx context.Context, eventType string, payload map[string]interface{}) error {
+func (d *Driver) PublishRaw(ctx context.Context, eventType string, payload map[string]any) error {
 	_, err := d.adapter.PublishRaw(ctx, eventType, payload)
 	return err
 }

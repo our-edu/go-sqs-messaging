@@ -38,7 +38,7 @@ func main() {
 
     // Publish
     ctx := context.Background()
-    err = client.Publish(ctx, "OrderCreated", map[string]interface{}{
+    err = client.Publish(ctx, "OrderCreated", map[string]any{
         "order_id": "12345",
         "amount":   99.99,
     })
@@ -72,7 +72,7 @@ func main() {
     defer client.Close()
 
     // Register handlers
-    client.RegisterHandler("OrderCreated", func(ctx context.Context, payload map[string]interface{}) error {
+    client.RegisterHandler("OrderCreated", func(ctx context.Context, payload map[string]any) error {
         orderID := payload["order_id"].(string)
         log.Printf("Processing order: %s", orderID)
         return nil

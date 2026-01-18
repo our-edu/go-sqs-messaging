@@ -112,7 +112,7 @@ func (s *Service) Publish(ctx context.Context, event contracts.Event) error {
 }
 
 // PublishRaw sends a raw message through the messaging system
-func (s *Service) PublishRaw(ctx context.Context, eventType string, payload map[string]interface{}) error {
+func (s *Service) PublishRaw(ctx context.Context, eventType string, payload map[string]any) error {
 	// Get active driver
 	s.mutex.RLock()
 	driver, ok := s.drivers[s.config.Messaging.Driver]
