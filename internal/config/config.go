@@ -72,6 +72,8 @@ type AWSConfig struct {
 	AccessKeyID     string `json:"access_key_id" yaml:"access_key_id"`
 	SecretAccessKey string `json:"secret_access_key" yaml:"secret_access_key"`
 	Region          string `json:"region" yaml:"region"`
+	// Endpoint is an optional custom endpoint URL for AWS services (e.g., LocalStack)
+	Endpoint string `json:"endpoint" yaml:"endpoint"`
 }
 
 // RedisConfig holds Redis connection settings
@@ -270,6 +272,7 @@ func LoadFromViper() *Config {
 	cfg.AWS.AccessKeyID = getViperString("AWS_SQS_ACCESS_KEY_ID", cfg.AWS.AccessKeyID)
 	cfg.AWS.SecretAccessKey = getViperString("AWS_SQS_SECRET_ACCESS_KEY", cfg.AWS.SecretAccessKey)
 	cfg.AWS.Region = getViperString("AWS_DEFAULT_REGION", cfg.AWS.Region)
+	cfg.AWS.Endpoint = getViperString("AWS_ENDPOINT", cfg.AWS.Endpoint)
 
 	// SQS config
 	if prefix := getViperString("SQS_QUEUE_PREFIX", ""); prefix != "" {

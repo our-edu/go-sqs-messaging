@@ -22,7 +22,7 @@ func main() {
 		sqsmessaging.WithAWSRegion("us-east-2"),
 
 		// LocalStack Configuration for local development
-		sqsmessaging.WithAWSEndpoint("http://localhost:4566"),
+		// sqsmessaging.WithAWSEndpoint("http://localhost:4566"),
 		sqsmessaging.WithAWSCredentials("test", "test"),
 
 		// Queue Configuration

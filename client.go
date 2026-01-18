@@ -138,9 +138,21 @@ func New(opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	// Create AWS clients
-	sqsClient := sqs.NewFromConfig(awsCfg)
-	cloudwatchClient := cloudwatch.NewFromConfig(awsCfg)
+	// Create AWS clients with optional custom endpoint (for LocalStack, etc.)
+	var sqsClient *sqs.Client
+	var cloudwatchClient *cloudwatch.Client
+
+	if cfg.AWS.Endpoint != "" {
+		sqsClient = sqs.NewFromConfig(awsCfg, func(o *sqs.Options) {
+			o.BaseEndpoint = &cfg.AWS.Endpoint
+		})
+		cloudwatchClient = cloudwatch.NewFromConfig(awsCfg, func(o *cloudwatch.Options) {
+			o.BaseEndpoint = &cfg.AWS.Endpoint
+		})
+	} else {
+		sqsClient = sqs.NewFromConfig(awsCfg)
+		cloudwatchClient = cloudwatch.NewFromConfig(awsCfg)
+	}
 
 	// Create client
 	client := &Client{

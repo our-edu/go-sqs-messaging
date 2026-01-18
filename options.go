@@ -48,6 +48,20 @@ func WithAWSRegion(region string) Option {
 	}
 }
 
+// WithAWSEndpoint sets a custom AWS endpoint URL.
+// This is useful for testing with LocalStack or other AWS-compatible services.
+//
+// Example:
+//
+//	client, err := sqsmessaging.New(
+//	    sqsmessaging.WithAWSEndpoint("http://localhost:4566"),
+//	)
+func WithAWSEndpoint(endpoint string) Option {
+	return func(o *Options) {
+		o.config.AWS.Endpoint = endpoint
+	}
+}
+
 // WithQueuePrefix sets the prefix for all queue names.
 // This is typically used for environment isolation (e.g., "prod", "staging", "dev").
 //
