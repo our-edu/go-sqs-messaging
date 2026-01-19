@@ -21,6 +21,7 @@ import (
 func (c *Client) runConsumerLoop(ctx context.Context, queueName string, opts *consumerOptions) error {
 	var stats consumerStats
 	stats.queueName = queueName
+	consecutiveErrors := 0
 
 	for {
 		select {
@@ -42,12 +43,33 @@ func (c *Client) runConsumerLoop(ctx context.Context, queueName string, opts *co
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			consecutiveErrors++
 			c.logger.Error().Err(err).Msg("Failed to receive messages")
 			if opts.onError != nil {
 				opts.onError(err)
 			}
+
+			// Apply backoff delay before retrying
+			delay := calculateBackoffDelay(
+				consecutiveErrors,
+				opts.errorBackoff.initialDelay,
+				opts.errorBackoff.maxDelay,
+				opts.errorBackoff.multiplier,
+			)
+			if delay > 0 {
+				c.logger.Debug().
+					Dur("backoff_delay", delay).
+					Int("consecutive_errors", consecutiveErrors).
+					Msg("Waiting before retry")
+				if err := waitWithBackoff(ctx, delay); err != nil {
+					return err
+				}
+			}
 			continue
 		}
+
+		// Reset consecutive errors on successful receive
+		consecutiveErrors = 0
 
 		if len(messages) == 0 {
 			continue
@@ -292,6 +314,37 @@ func (c *Client) checkErrorRates(stats *consumerStats) {
 	}
 }
 
+// calculateBackoffDelay calculates the delay for exponential backoff
+func calculateBackoffDelay(consecutiveErrors int, initialDelay, maxDelay time.Duration, multiplier float64) time.Duration {
+	if consecutiveErrors <= 0 {
+		return 0
+	}
+
+	delay := initialDelay
+	for i := 1; i < consecutiveErrors; i++ {
+		delay = time.Duration(float64(delay) * multiplier)
+		if delay > maxDelay {
+			return maxDelay
+		}
+	}
+	return delay
+}
+
+// waitWithBackoff waits for the calculated backoff delay, respecting context cancellation
+func waitWithBackoff(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 func isTransientErr(err error) bool {
 	// Check for network errors
 	var netErr net.Error
@@ -396,6 +449,7 @@ func (c *Client) runMultiConsumerLoop(ctx context.Context, queueNames []string, 
 func (c *Client) runSingleQueueConsumer(ctx context.Context, qc queueConsumer, opts *consumerOptions) error {
 	var stats consumerStats
 	stats.queueName = qc.queueName
+	consecutiveErrors := 0
 
 	for {
 		select {
@@ -418,6 +472,7 @@ func (c *Client) runSingleQueueConsumer(ctx context.Context, qc queueConsumer, o
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			consecutiveErrors++
 			c.logger.Error().
 				Str("queue", qc.queueName).
 				Err(err).
@@ -425,8 +480,29 @@ func (c *Client) runSingleQueueConsumer(ctx context.Context, qc queueConsumer, o
 			if opts.onError != nil {
 				opts.onError(err)
 			}
+
+			// Apply backoff delay before retrying
+			delay := calculateBackoffDelay(
+				consecutiveErrors,
+				opts.errorBackoff.initialDelay,
+				opts.errorBackoff.maxDelay,
+				opts.errorBackoff.multiplier,
+			)
+			if delay > 0 {
+				c.logger.Debug().
+					Str("queue", qc.queueName).
+					Dur("backoff_delay", delay).
+					Int("consecutive_errors", consecutiveErrors).
+					Msg("Waiting before retry")
+				if err := waitWithBackoff(ctx, delay); err != nil {
+					return err
+				}
+			}
 			continue
 		}
+
+		// Reset consecutive errors on successful receive
+		consecutiveErrors = 0
 
 		if len(messages) == 0 {
 			continue

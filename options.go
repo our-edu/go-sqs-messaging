@@ -1,6 +1,8 @@
 package sqsmessaging
 
 import (
+	"time"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -312,6 +314,15 @@ type consumerOptions struct {
 	onError           func(error)
 	onMessageStart    func(Message)
 	onMessageEnd      func(Message, error)
+	errorBackoff      errorBackoffConfig
+}
+
+// errorBackoffConfig holds the configuration for exponential backoff on errors
+type errorBackoffConfig struct {
+	initialDelay   time.Duration
+	maxDelay       time.Duration
+	multiplier     float64
+	consecutiveErr int // tracks consecutive errors for backoff calculation
 }
 
 // WithMaxMessages sets the maximum number of messages to receive per poll.
@@ -388,5 +399,33 @@ func WithWorkerCount(count int) ConsumerOption {
 func WithCreateIfNotExists(create bool) ConsumerOption {
 	return func(o *consumerOptions) {
 		o.createIfNotExists = create
+	}
+}
+
+// WithErrorBackoff configures exponential backoff for consumer errors.
+// When receiving messages fails (e.g., queue doesn't exist, network issues),
+// the consumer will wait with exponential backoff before retrying.
+//
+// Parameters:
+//   - initialDelay: Starting delay after first error (default: 1 second)
+//   - maxDelay: Maximum delay between retries (default: 30 seconds)
+//   - multiplier: Factor to multiply delay by after each consecutive error (default: 2.0)
+//
+// Example:
+//
+//	client.StartConsumer(ctx, "my-queue",
+//	    sqsmessaging.WithErrorBackoff(time.Second, 30*time.Second, 2.0),
+//	)
+func WithErrorBackoff(initialDelay, maxDelay time.Duration, multiplier float64) ConsumerOption {
+	return func(o *consumerOptions) {
+		if initialDelay > 0 {
+			o.errorBackoff.initialDelay = initialDelay
+		}
+		if maxDelay > 0 {
+			o.errorBackoff.maxDelay = maxDelay
+		}
+		if multiplier > 0 {
+			o.errorBackoff.multiplier = multiplier
+		}
 	}
 }

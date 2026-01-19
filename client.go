@@ -45,6 +45,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -350,6 +351,11 @@ func (c *Client) StartConsumer(ctx context.Context, queueName string, opts ...Co
 		maxMessages:       10,
 		waitTime:          20,
 		createIfNotExists: true, // Default: create queue if not exists
+		errorBackoff: errorBackoffConfig{
+			initialDelay: 1 * time.Second,
+			maxDelay:     30 * time.Second,
+			multiplier:   2.0,
+		},
 	}
 	for _, opt := range opts {
 		opt(consumerOpts)
@@ -417,6 +423,11 @@ func (c *Client) StartMultiConsumer(ctx context.Context, queueNames []string, op
 		waitTime:          20,
 		workerCount:       len(queueNames), // Default: one worker per queue
 		createIfNotExists: true,
+		errorBackoff: errorBackoffConfig{
+			initialDelay: 1 * time.Second,
+			maxDelay:     30 * time.Second,
+			multiplier:   2.0,
+		},
 	}
 	for _, opt := range opts {
 		opt(consumerOpts)
