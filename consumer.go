@@ -49,6 +49,29 @@ func (c *Client) runConsumerLoop(ctx context.Context, queueName string, opts *co
 				opts.onError(err)
 			}
 
+			// Check if queue doesn't exist (e.g., LocalStack restarted)
+			if isNonExistentQueueErr(err) && opts.createIfNotExists {
+				c.logger.Warn().
+					Str("queue", queueName).
+					Msg("Queue does not exist, attempting to recreate")
+
+				// Clear cache and recreate queue
+				if clearErr := c.resolver.ClearCache(ctx); clearErr != nil {
+					c.logger.Warn().Err(clearErr).Msg("Failed to clear queue cache")
+				}
+
+				if _, createErr := c.resolver.CreateQueueWithDLQ(ctx, queueName); createErr != nil {
+					c.logger.Error().Err(createErr).Msg("Failed to recreate queue")
+				} else {
+					// Re-set the queue URL in consumer
+					if setErr := c.consumer.SetQueue(ctx, queueName); setErr != nil {
+						c.logger.Error().Err(setErr).Msg("Failed to set queue after recreation")
+					} else {
+						c.logger.Info().Str("queue", queueName).Msg("Queue recreated successfully")
+					}
+				}
+			}
+
 			// Apply backoff delay before retrying
 			delay := calculateBackoffDelay(
 				consecutiveErrors,
@@ -370,6 +393,16 @@ func isTransientErr(err error) bool {
 	return false
 }
 
+// isNonExistentQueueErr checks if the error is due to a non-existent queue
+func isNonExistentQueueErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "NonExistentQueue") ||
+		strings.Contains(errMsg, "queue does not exist")
+}
+
 // queueConsumer represents a consumer for a single queue in the multi-consumer setup
 type queueConsumer struct {
 	queueName string
@@ -400,20 +433,20 @@ func (c *Client) runMultiConsumerLoop(ctx context.Context, queueNames []string, 
 	}
 
 	// Start a worker for each queue
-	for _, qc := range queueConsumers {
+	for i := range queueConsumers {
 		wg.Add(1)
-		go func(qc queueConsumer) {
+		go func(qc *queueConsumer) {
 			defer wg.Done()
 
 			err := c.runSingleQueueConsumer(consumerCtx, qc, opts)
 			if err != nil && err != context.Canceled {
 				errChan <- fmt.Errorf("queue %s consumer error: %w", qc.queueName, err)
 			}
-		}(qc)
+		}(&queueConsumers[i])
 
 		c.logger.Info().
-			Str("queue", qc.queueName).
-			Str("url", qc.queueURL).
+			Str("queue", queueConsumers[i].queueName).
+			Str("url", queueConsumers[i].queueURL).
 			Msg("Started queue consumer worker")
 	}
 
@@ -446,7 +479,7 @@ func (c *Client) runMultiConsumerLoop(ctx context.Context, queueNames []string, 
 }
 
 // runSingleQueueConsumer handles consuming from a single queue in the multi-consumer setup
-func (c *Client) runSingleQueueConsumer(ctx context.Context, qc queueConsumer, opts *consumerOptions) error {
+func (c *Client) runSingleQueueConsumer(ctx context.Context, qc *queueConsumer, opts *consumerOptions) error {
 	var stats consumerStats
 	stats.queueName = qc.queueName
 	consecutiveErrors := 0
@@ -479,6 +512,29 @@ func (c *Client) runSingleQueueConsumer(ctx context.Context, qc queueConsumer, o
 				Msg("Failed to receive messages")
 			if opts.onError != nil {
 				opts.onError(err)
+			}
+
+			// Check if queue doesn't exist (e.g., LocalStack restarted)
+			if isNonExistentQueueErr(err) && opts.createIfNotExists {
+				c.logger.Warn().
+					Str("queue", qc.queueName).
+					Msg("Queue does not exist, attempting to recreate")
+
+				// Clear cache and recreate queue
+				if clearErr := c.resolver.ClearCache(ctx); clearErr != nil {
+					c.logger.Warn().Err(clearErr).Msg("Failed to clear queue cache")
+				}
+
+				if newURL, createErr := c.resolver.CreateQueueWithDLQ(ctx, qc.queueName); createErr != nil {
+					c.logger.Error().Err(createErr).Msg("Failed to recreate queue")
+				} else {
+					// Update the queue URL
+					qc.queueURL = newURL
+					c.logger.Info().
+						Str("queue", qc.queueName).
+						Str("url", newURL).
+						Msg("Queue recreated successfully")
+				}
 			}
 
 			// Apply backoff delay before retrying
