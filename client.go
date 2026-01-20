@@ -43,6 +43,7 @@ package sqsmessaging
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -75,14 +76,15 @@ type Client struct {
 	db               *gorm.DB
 	logger           zerolog.Logger
 
-	resolver         *sqsdriver.Resolver
-	targetResolver   *sqsdriver.TargetQueueResolver
-	publisher        *sqsdriver.Publisher
-	consumer         *sqsdriver.Consumer
-	metricsService   *metrics.CloudWatchService
-	idempotencyStore *storage.IdempotencyStore
-	messagingService *messaging.Service
-	eventRegistry    *messaging.EventRegistry
+	resolver          *sqsdriver.Resolver
+	targetResolver    *sqsdriver.TargetQueueResolver
+	publisher         *sqsdriver.Publisher
+	consumer          *sqsdriver.Consumer
+	metricsService    *metrics.CloudWatchService
+	prometheusService *metrics.PrometheusService
+	idempotencyStore  *storage.IdempotencyStore
+	messagingService  *messaging.Service
+	eventRegistry     *messaging.EventRegistry
 
 	serviceName string
 	mu          sync.RWMutex
@@ -195,6 +197,19 @@ func New(opts ...Option) (*Client, error) {
 	client.metricsService = metrics.NewCloudWatchService(cloudwatchClient, cfg, logger)
 	client.eventRegistry = messaging.NewEventRegistry()
 	client.messagingService = messaging.NewService(cfg, logger)
+
+	// Initialize Prometheus metrics if enabled
+	if cfg.SQS.Prometheus.Enabled {
+		promConfig := metrics.PrometheusConfig{
+			Namespace: cfg.SQS.Prometheus.Namespace,
+			Subsystem: cfg.SQS.Prometheus.Subsystem,
+		}
+		client.prometheusService = metrics.NewPrometheusService(logger, promConfig)
+		if err := client.prometheusService.Register(); err != nil {
+			logger.Warn().Err(err).Msg("Failed to register Prometheus metrics")
+		}
+		logger.Info().Msg("Prometheus metrics enabled - use client.PrometheusHandler() to expose metrics endpoint")
+	}
 
 	// Initialize idempotency store if DB is provided (Redis is already verified)
 	if client.db != nil {
@@ -526,6 +541,42 @@ func (c *Client) CleanupProcessedEvents(ctx context.Context, olderThanDays int) 
 		return 0, ErrIdempotencyNotConfigured
 	}
 	return c.idempotencyStore.Cleanup(ctx, olderThanDays)
+}
+
+// PrometheusHandler returns the HTTP handler for Prometheus metrics.
+// This allows you to mount the metrics endpoint on your own HTTP server,
+// giving you full control over the HTTP configuration, middleware, and port.
+// Returns nil if Prometheus metrics are not enabled.
+//
+// Example with net/http:
+//
+//	http.Handle("/metrics", client.PrometheusHandler())
+//	http.ListenAndServe(":8080", nil)
+//
+// Example with Gin:
+//
+//	router := gin.Default()
+//	router.GET("/metrics", gin.WrapH(client.PrometheusHandler()))
+//
+// Example with Echo:
+//
+//	e := echo.New()
+//	e.GET("/metrics", echo.WrapHandler(client.PrometheusHandler()))
+//
+// Example with Chi:
+//
+//	r := chi.NewRouter()
+//	r.Handle("/metrics", client.PrometheusHandler())
+func (c *Client) PrometheusHandler() http.Handler {
+	if c.prometheusService == nil {
+		return nil
+	}
+	return c.prometheusService.Handler()
+}
+
+// PrometheusEnabled returns true if Prometheus metrics are enabled.
+func (c *Client) PrometheusEnabled() bool {
+	return c.prometheusService != nil
 }
 
 // SetTargetQueue maps an event type to a target queue.

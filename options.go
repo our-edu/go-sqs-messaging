@@ -234,6 +234,34 @@ func WithCloudWatchMetrics(enabled bool, namespace string) Option {
 	}
 }
 
+// WithPrometheusMetrics enables or disables Prometheus metrics.
+// When enabled, use client.PrometheusHandler() to get the HTTP handler
+// and mount it on your own HTTP server.
+//
+// Parameters:
+//   - enabled: Whether to enable Prometheus metrics
+//   - namespace: Prometheus metric namespace/prefix (e.g., "sqsmessaging")
+//
+// Example:
+//
+//	client, err := sqsmessaging.New(
+//	    sqsmessaging.WithPrometheusMetrics(true, "myapp_sqs"),
+//	)
+//
+//	// Mount on your own HTTP server (e.g., Gin)
+//	router.GET("/metrics", gin.WrapH(client.PrometheusHandler()))
+//
+//	// Or with net/http
+//	http.Handle("/metrics", client.PrometheusHandler())
+func WithPrometheusMetrics(enabled bool, namespace string) Option {
+	return func(o *Options) {
+		o.config.SQS.Prometheus.Enabled = enabled
+		if namespace != "" {
+			o.config.SQS.Prometheus.Namespace = namespace
+		}
+	}
+}
+
 // WithLongRunningEvents sets event types that need extended visibility timeout.
 //
 // Example:

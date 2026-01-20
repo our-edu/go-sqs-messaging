@@ -61,6 +61,8 @@ type SQSConfig struct {
 	DLQMaxReceiveCount int `json:"dlq_max_receive_count" yaml:"dlq_max_receive_count"`
 	// CloudWatch settings
 	CloudWatch CloudWatchConfig `json:"cloudwatch" yaml:"cloudwatch"`
+	// Prometheus settings
+	Prometheus PrometheusConfig `json:"prometheus" yaml:"prometheus"`
 }
 
 // CloudWatchConfig holds CloudWatch metrics settings
@@ -69,6 +71,16 @@ type CloudWatchConfig struct {
 	Enabled bool `json:"enabled" yaml:"enabled"`
 	// Namespace is the CloudWatch namespace
 	Namespace string `json:"namespace" yaml:"namespace"`
+}
+
+// PrometheusConfig holds Prometheus metrics settings
+type PrometheusConfig struct {
+	// Enabled enables Prometheus metrics
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	// Namespace is the Prometheus metric namespace (prefix)
+	Namespace string `json:"namespace" yaml:"namespace"`
+	// Subsystem is an optional subsystem for metrics grouping
+	Subsystem string `json:"subsystem" yaml:"subsystem"`
 }
 
 // AWSConfig holds AWS credentials and region
@@ -139,6 +151,11 @@ func DefaultConfig() *Config {
 			CloudWatch: CloudWatchConfig{
 				Enabled:   true,
 				Namespace: "SQS/PaymentService",
+			},
+			Prometheus: PrometheusConfig{
+				Enabled:   false,
+				Namespace: "sqsmessaging",
+				Subsystem: "",
 			},
 		},
 		AWS: AWSConfig{
@@ -320,6 +337,15 @@ func LoadFromViper() *Config {
 	cfg.SQS.CloudWatch.Enabled = getViperBool("SQS_CLOUDWATCH_ENABLED", true)
 	if ns := getViperString("SQS_CLOUDWATCH_NAMESPACE", ""); ns != "" {
 		cfg.SQS.CloudWatch.Namespace = ns
+	}
+
+	// Prometheus
+	cfg.SQS.Prometheus.Enabled = getViperBool("SQS_PROMETHEUS_ENABLED", false)
+	if ns := getViperString("SQS_PROMETHEUS_NAMESPACE", ""); ns != "" {
+		cfg.SQS.Prometheus.Namespace = ns
+	}
+	if sub := getViperString("SQS_PROMETHEUS_SUBSYSTEM", ""); sub != "" {
+		cfg.SQS.Prometheus.Subsystem = sub
 	}
 
 	// Target queue config

@@ -123,6 +123,11 @@ client.StartMultiConsumer(ctx, queues,
 | `WithDLQMaxReceiveCount(count)` | Retries before DLQ |
 | `WithRedis(addr, password, db)` | Redis for idempotency |
 | `WithDatabase(db)` | GORM DB for idempotency |
+| `WithCloudWatchMetrics(enabled, namespace)` | CloudWatch metrics |
+| `WithPrometheusMetrics(enabled, namespace)` | Prometheus metrics |
+| `WithLongPollingWait(seconds)` | Long polling wait time (max 20s) |
+| `WithMessageRetention(days)` | Message retention period (max 14 days) |
+| `WithEventTimeouts(map)` | Per-event visibility timeout |
 
 ## Message Context Helpers
 
@@ -176,6 +181,9 @@ func handleOrder(ctx context.Context, payload map[string]any) error {
 | `WithWorkerCount(n)` | Worker goroutines |
 | `WithOnError(fn)` | Error callback |
 | `WithCreateIfNotExists(bool)` | Auto-create queues |
+| `WithErrorBackoff(initial, max, multiplier)` | Exponential backoff on errors |
+| `WithOnMessageStart(fn)` | Callback before message processing |
+| `WithOnMessageEnd(fn)` | Callback after message processing |
 
 ## Error Handling
 
@@ -225,6 +233,101 @@ results, err := client.PublishBatch(ctx, "order-events", []sqsmessaging.BatchMes
 })
 ```
 
+## Monitoring & Metrics
+
+### Prometheus Metrics
+
+The library exposes Prometheus metrics that are automatically merged with your application's existing metrics. All SQS messaging metrics will be available on your existing `/metrics` endpoint.
+
+#### Enable Prometheus Metrics
+
+```go
+client, err := sqsmessaging.New(
+    sqsmessaging.WithPrometheusMetrics(true, "sqsmessaging"),
+    // ... other options
+)
+```
+
+#### Available Metrics
+
+**Counters:**
+- `sqsmessaging_messages_processed_total` - Total messages processed
+- `sqsmessaging_messages_success_total` - Total successful messages
+- `sqsmessaging_validation_errors_total` - Validation errors
+- `sqsmessaging_transient_errors_total` - Transient errors (retried)
+- `sqsmessaging_permanent_errors_total` - Permanent errors
+- `sqsmessaging_messages_published_total` - Messages published
+- `sqsmessaging_publish_errors_total` - Publish errors
+
+**Gauges:**
+- `sqsmessaging_queue_depth` - Current messages in queue
+- `sqsmessaging_dlq_depth` - Current messages in DLQ
+- `sqsmessaging_active_consumers` - Active consumer count
+
+**Histograms:**
+- `sqsmessaging_processing_duration_milliseconds` - Message processing time
+- `sqsmessaging_publish_duration_milliseconds` - Publish latency
+
+All metrics are labeled with `queue` and/or `event_type` for detailed observability.
+
+#### Example Prometheus Query
+
+```promql
+# Message throughput (per second)
+rate(sqsmessaging_messages_processed_total[1m])
+
+# Error rate
+rate(sqsmessaging_permanent_errors_total[1m])
+
+# Queue depth trend
+sqsmessaging_queue_depth
+
+# P99 processing latency
+histogram_quantile(0.99, sqsmessaging_processing_duration_milliseconds_bucket)
+```
+
+### CloudWatch Metrics
+
+The library also supports CloudWatch metrics (enabled by default):
+
+```go
+client, err := sqsmessaging.New(
+    sqsmessaging.WithCloudWatchMetrics(true, "MyApp/SQS"),
+    // ... other options
+)
+```
+
+## Resilience & Error Recovery
+
+### Consumer Error Backoff
+
+When a consumer encounters errors (queue doesn't exist, network issues, etc.), it automatically applies exponential backoff to avoid overwhelming the system. This is especially useful when dealing with service restarts or LocalStack failures.
+
+```go
+client.StartConsumer(ctx, "order-events",
+    sqsmessaging.WithErrorBackoff(
+        1*time.Second,    // Initial delay
+        30*time.Second,   // Max delay
+        2.0,              // Multiplier
+    ),
+)
+```
+
+**Default behavior (no configuration needed):**
+- Initial delay: 1 second
+- Max delay: 30 seconds
+- Multiplier: 2.0x per consecutive error
+- Automatic queue recreation for non-existent queues
+
+**Example backoff sequence:**
+- 1st error: wait 1s
+- 2nd error: wait 2s
+- 3rd error: wait 4s
+- 4th error: wait 8s
+- ... continues up to 30s max
+
+This prevents the consumer from spamming error logs when the queue is temporarily unavailable.
+
 ## Environment Variables
 
 ```bash
@@ -233,4 +336,13 @@ AWS_SQS_SECRET_ACCESS_KEY=your-secret
 AWS_DEFAULT_REGION=us-east-2
 AWS_ENDPOINT=http://localhost:4566  # Optional, for LocalStack
 SQS_QUEUE_PREFIX=prod
+
+# Prometheus metrics
+SQS_PROMETHEUS_ENABLED=true
+SQS_PROMETHEUS_NAMESPACE=sqsmessaging
+SQS_PROMETHEUS_SUBSYSTEM=
+
+# CloudWatch metrics
+SQS_CLOUDWATCH_ENABLED=true
+SQS_CLOUDWATCH_NAMESPACE=MyApp/SQS
 ```

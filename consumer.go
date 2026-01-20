@@ -288,6 +288,12 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 		if c.metricsService != nil {
 			c.metricsService.Increment(ctx, metrics.MetricValidationErrors, nil)
 		}
+		if c.prometheusService != nil {
+			c.prometheusService.Increment(ctx, metrics.MetricValidationErrors, map[string]string{
+				"queue":      stats.queueName,
+				"event_type": "",
+			})
+		}
 
 	case ErrorTypeTransient:
 		stats.transientErrors++
@@ -299,6 +305,12 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 		if c.metricsService != nil {
 			c.metricsService.Increment(ctx, metrics.MetricTransientErrors, nil)
 		}
+		if c.prometheusService != nil {
+			c.prometheusService.Increment(ctx, metrics.MetricTransientErrors, map[string]string{
+				"queue":      stats.queueName,
+				"event_type": "",
+			})
+		}
 
 	case ErrorTypePermanent:
 		stats.permanentErrors++
@@ -309,6 +321,12 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 		c.consumer.DeleteMessage(ctx, receiptHandle)
 		if c.metricsService != nil {
 			c.metricsService.Increment(ctx, metrics.MetricPermanentErrors, nil)
+		}
+		if c.prometheusService != nil {
+			c.prometheusService.Increment(ctx, metrics.MetricPermanentErrors, map[string]string{
+				"queue":      stats.queueName,
+				"event_type": "",
+			})
 		}
 
 	default:
