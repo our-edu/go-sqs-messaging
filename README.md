@@ -73,8 +73,14 @@ func main() {
 
     // Register handlers
     client.RegisterHandler("OrderCreated", func(ctx context.Context, payload map[string]any) error {
+        // Access message metadata from context
+        sourceService := sqsmessaging.SourceServiceFromContext(ctx)
+        queueName := sqsmessaging.QueueNameFromContext(ctx)
+        traceID := sqsmessaging.TraceIDFromContext(ctx)
+        
         orderID := payload["order_id"].(string)
-        log.Printf("Processing order: %s", orderID)
+        log.Printf("Processing order %s from service %s (queue: %s, trace: %s)", 
+            orderID, sourceService, queueName, traceID)
         return nil
     })
 
@@ -117,6 +123,49 @@ client.StartMultiConsumer(ctx, queues,
 | `WithDLQMaxReceiveCount(count)` | Retries before DLQ |
 | `WithRedis(addr, password, db)` | Redis for idempotency |
 | `WithDatabase(db)` | GORM DB for idempotency |
+
+## Message Context Helpers
+
+When processing messages, your handler receives a context that contains useful metadata about the message. Use these helper functions to access it:
+
+```go
+func handleOrder(ctx context.Context, payload map[string]any) error {
+    // Get the service that published this message
+    sourceService := sqsmessaging.SourceServiceFromContext(ctx)
+    
+    // Get the queue name the message was received from
+    queueName := sqsmessaging.QueueNameFromContext(ctx)
+    
+    // Get the trace ID for distributed tracing
+    traceID := sqsmessaging.TraceIDFromContext(ctx)
+    
+    // Get the SQS message ID
+    messageID := sqsmessaging.MessageIDFromContext(ctx)
+    
+    // Get the event type
+    eventType := sqsmessaging.EventTypeFromContext(ctx)
+    
+    log.Printf("Received %s from %s via queue %s", eventType, sourceService, queueName)
+    
+    // Handle differently based on source service
+    switch sourceService {
+    case "order-service":
+        // Handle order service events
+    case "payment-service":
+        // Handle payment service events
+    }
+    
+    return nil
+}
+```
+
+| Helper Function | Returns |
+|-----------------|---------|
+| `SourceServiceFromContext(ctx)` | Service that published the message (e.g., `"order-service"`) |
+| `QueueNameFromContext(ctx)` | Queue name the message was received from |
+| `EventTypeFromContext(ctx)` | Event type (e.g., `"OrderCreated"`) |
+| `TraceIDFromContext(ctx)` | Trace ID for distributed tracing |
+| `MessageIDFromContext(ctx)` | SQS Message ID |
 
 ## Consumer Options
 

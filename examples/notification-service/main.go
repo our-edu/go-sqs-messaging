@@ -108,9 +108,17 @@ func main() {
 // User Service Notification Handlers
 
 func handleUserRegistered(ctx context.Context, payload map[string]any) error {
+	// Get message metadata from context
+	sourceService := sqsmessaging.SourceServiceFromContext(ctx)
+	queueName := sqsmessaging.QueueNameFromContext(ctx)
+	traceID := sqsmessaging.TraceIDFromContext(ctx)
+	messageID := sqsmessaging.MessageIDFromContext(ctx)
+
 	userID, _ := payload["user_id"].(string)
 	email, _ := payload["email"].(string)
 
+	log.Printf("[%s] Received from service: %s, queue: %s, traceID: %s",
+		messageID, sourceService, queueName, traceID)
 	log.Printf("Sending welcome email to user %s at %s", userID, email)
 
 	// TODO: Implement actual email sending logic
@@ -144,9 +152,14 @@ func handleUserEmailVerified(ctx context.Context, payload map[string]any) error 
 // Order Service Notification Handlers
 
 func handleOrderCreated(ctx context.Context, payload map[string]any) error {
+	// Get the source service that published this message
+	sourceService := sqsmessaging.SourceServiceFromContext(ctx)
+
 	orderID, _ := payload["order_id"].(string)
 	customerEmail, _ := payload["customer_email"].(string)
 	total, _ := payload["total"].(float64)
+
+	log.Printf("Received OrderCreated from service: %s", sourceService)
 
 	log.Printf("Sending order confirmation for order %s to %s (total: $%.2f)", orderID, customerEmail, total)
 

@@ -116,7 +116,7 @@ func (c *Client) runConsumerLoop(ctx context.Context, queueName string, opts *co
 				opts.onMessageStart(pubMsg)
 			}
 
-			processErr := c.processMessage(ctx, msg, opts, &stats)
+			processErr := c.processMessage(ctx, msg, opts, &stats, queueName)
 
 			if opts.onMessageEnd != nil {
 				opts.onMessageEnd(pubMsg, processErr)
@@ -139,11 +139,11 @@ type consumerStats struct {
 	permanentErrors  int
 }
 
-func (c *Client) processMessage(ctx context.Context, msg contracts.Message, opts *consumerOptions, stats *consumerStats) error {
-	return c.processInternalMessage(ctx, msg, opts)
+func (c *Client) processMessage(ctx context.Context, msg contracts.Message, opts *consumerOptions, stats *consumerStats, queueName string) error {
+	return c.processInternalMessage(ctx, msg, opts, queueName)
 }
 
-func (c *Client) processInternalMessage(ctx context.Context, msg contracts.Message, opts *consumerOptions) error {
+func (c *Client) processInternalMessage(ctx context.Context, msg contracts.Message, opts *consumerOptions, queueName string) error {
 	body := msg.Body
 	receiptHandle := msg.ReceiptHandle
 
@@ -215,9 +215,16 @@ func (c *Client) processInternalMessage(ctx context.Context, msg contracts.Messa
 		return NewPermanentError("no handler registered for event type: "+eventType, nil)
 	}
 
+	// Create context with message metadata
+	handlerCtx := context.WithValue(ctx, ContextKeySourceService, env.Service)
+	handlerCtx = context.WithValue(handlerCtx, ContextKeyEventType, eventType)
+	handlerCtx = context.WithValue(handlerCtx, ContextKeyTraceID, env.GetTraceID())
+	handlerCtx = context.WithValue(handlerCtx, ContextKeyMessageID, msg.MessageID)
+	handlerCtx = context.WithValue(handlerCtx, ContextKeyQueueName, queueName)
+
 	// Execute handler
 	startTime := time.Now()
-	if err := handler(ctx, env.Payload); err != nil {
+	if err := handler(handlerCtx, env.Payload); err != nil {
 		// Classify the error
 		if isTransientErr(err) {
 			return NewTransientError("handler failed", err)
@@ -704,9 +711,16 @@ func (c *Client) processMessageWithURL(ctx context.Context, queueURL string, msg
 		return NewPermanentError("no handler registered for event type: "+eventType, nil)
 	}
 
+	// Create context with message metadata
+	handlerCtx := context.WithValue(ctx, ContextKeySourceService, env.Service)
+	handlerCtx = context.WithValue(handlerCtx, ContextKeyEventType, eventType)
+	handlerCtx = context.WithValue(handlerCtx, ContextKeyTraceID, env.GetTraceID())
+	handlerCtx = context.WithValue(handlerCtx, ContextKeyMessageID, msg.MessageID)
+	handlerCtx = context.WithValue(handlerCtx, ContextKeyQueueName, queueURL)
+
 	// Execute handler
 	startTime := time.Now()
-	if err := handler(ctx, env.Payload); err != nil {
+	if err := handler(handlerCtx, env.Payload); err != nil {
 		// Classify the error
 		if isTransientErr(err) {
 			return NewTransientError("handler failed", err)

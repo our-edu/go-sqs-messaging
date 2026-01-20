@@ -1,9 +1,112 @@
 package sqsmessaging
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
+
+func TestContextHelpers(t *testing.T) {
+	t.Run("QueueNameFromContext", func(t *testing.T) {
+		ctx := context.Background()
+
+		// Empty context should return empty string
+		if got := QueueNameFromContext(ctx); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+
+		// Context with value should return the value
+		ctx = context.WithValue(ctx, ContextKeyQueueName, "order-events")
+		if got := QueueNameFromContext(ctx); got != "order-events" {
+			t.Errorf("expected 'order-events', got %q", got)
+		}
+	})
+
+	t.Run("MessageIDFromContext", func(t *testing.T) {
+		ctx := context.Background()
+
+		// Empty context should return empty string
+		if got := MessageIDFromContext(ctx); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+
+		// Context with value should return the value
+		ctx = context.WithValue(ctx, ContextKeyMessageID, "msg-123")
+		if got := MessageIDFromContext(ctx); got != "msg-123" {
+			t.Errorf("expected 'msg-123', got %q", got)
+		}
+	})
+
+	t.Run("EventTypeFromContext", func(t *testing.T) {
+		ctx := context.Background()
+
+		// Empty context should return empty string
+		if got := EventTypeFromContext(ctx); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+
+		// Context with value should return the value
+		ctx = context.WithValue(ctx, ContextKeyEventType, "OrderCreated")
+		if got := EventTypeFromContext(ctx); got != "OrderCreated" {
+			t.Errorf("expected 'OrderCreated', got %q", got)
+		}
+	})
+
+	t.Run("TraceIDFromContext", func(t *testing.T) {
+		ctx := context.Background()
+
+		// Empty context should return empty string
+		if got := TraceIDFromContext(ctx); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+
+		// Context with value should return the value
+		ctx = context.WithValue(ctx, ContextKeyTraceID, "trace-abc-123")
+		if got := TraceIDFromContext(ctx); got != "trace-abc-123" {
+			t.Errorf("expected 'trace-abc-123', got %q", got)
+		}
+	})
+
+	t.Run("SourceServiceFromContext", func(t *testing.T) {
+		ctx := context.Background()
+
+		// Empty context should return empty string
+		if got := SourceServiceFromContext(ctx); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+
+		// Context with value should return the value
+		ctx = context.WithValue(ctx, ContextKeySourceService, "payment-service")
+		if got := SourceServiceFromContext(ctx); got != "payment-service" {
+			t.Errorf("expected 'payment-service', got %q", got)
+		}
+	})
+
+	t.Run("AllContextValues", func(t *testing.T) {
+		ctx := context.Background()
+		ctx = context.WithValue(ctx, ContextKeyQueueName, "order-events")
+		ctx = context.WithValue(ctx, ContextKeyMessageID, "msg-456")
+		ctx = context.WithValue(ctx, ContextKeyEventType, "PaymentProcessed")
+		ctx = context.WithValue(ctx, ContextKeyTraceID, "trace-xyz")
+		ctx = context.WithValue(ctx, ContextKeySourceService, "order-service")
+
+		if got := QueueNameFromContext(ctx); got != "order-events" {
+			t.Errorf("QueueName: expected 'order-events', got %q", got)
+		}
+		if got := MessageIDFromContext(ctx); got != "msg-456" {
+			t.Errorf("MessageID: expected 'msg-456', got %q", got)
+		}
+		if got := EventTypeFromContext(ctx); got != "PaymentProcessed" {
+			t.Errorf("EventType: expected 'PaymentProcessed', got %q", got)
+		}
+		if got := TraceIDFromContext(ctx); got != "trace-xyz" {
+			t.Errorf("TraceID: expected 'trace-xyz', got %q", got)
+		}
+		if got := SourceServiceFromContext(ctx); got != "order-service" {
+			t.Errorf("SourceService: expected 'order-service', got %q", got)
+		}
+	})
+}
 
 func TestValidationError(t *testing.T) {
 	t.Run("error message without cause", func(t *testing.T) {

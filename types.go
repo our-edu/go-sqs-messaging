@@ -5,8 +5,76 @@ import (
 	"errors"
 )
 
+// Context keys for message metadata
+type contextKey string
+
+const (
+	// ContextKeyQueueName is the context key for the queue name
+	ContextKeyQueueName contextKey = "sqsmessaging.queue_name"
+	// ContextKeyMessageID is the context key for the message ID
+	ContextKeyMessageID contextKey = "sqsmessaging.message_id"
+	// ContextKeyEventType is the context key for the event type
+	ContextKeyEventType contextKey = "sqsmessaging.event_type"
+	// ContextKeyTraceID is the context key for the trace ID
+	ContextKeyTraceID contextKey = "sqsmessaging.trace_id"
+	// ContextKeySourceService is the context key for the source service that published the message
+	ContextKeySourceService contextKey = "sqsmessaging.source_service"
+)
+
+// QueueNameFromContext returns the queue name from the context.
+// Returns empty string if not set.
+func QueueNameFromContext(ctx context.Context) string {
+	if v := ctx.Value(ContextKeyQueueName); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// MessageIDFromContext returns the message ID from the context.
+// Returns empty string if not set.
+func MessageIDFromContext(ctx context.Context) string {
+	if v := ctx.Value(ContextKeyMessageID); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// EventTypeFromContext returns the event type from the context.
+// Returns empty string if not set.
+func EventTypeFromContext(ctx context.Context) string {
+	if v := ctx.Value(ContextKeyEventType); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// TraceIDFromContext returns the trace ID from the context.
+// Returns empty string if not set.
+func TraceIDFromContext(ctx context.Context) string {
+	if v := ctx.Value(ContextKeyTraceID); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// SourceServiceFromContext returns the source service that published the message.
+// Returns empty string if not set.
+func SourceServiceFromContext(ctx context.Context) string {
+	if v := ctx.Value(ContextKeySourceService); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
 // Handler is a function that handles incoming messages.
 // It receives the context and the message payload.
+// The context contains message metadata accessible via helper functions:
+//   - SourceServiceFromContext(ctx) - the service that published the message
+//   - EventTypeFromContext(ctx) - the event type
+//   - TraceIDFromContext(ctx) - the trace ID for distributed tracing
+//   - MessageIDFromContext(ctx) - the SQS message ID
+//   - QueueNameFromContext(ctx) - the queue name the message was received from
+//
 // Return nil for success, or an error to indicate failure.
 type Handler func(ctx context.Context, payload map[string]any) error
 
