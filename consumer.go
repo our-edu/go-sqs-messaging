@@ -242,6 +242,16 @@ func (c *Client) processInternalMessage(ctx context.Context, msg contracts.Messa
 			"event_type": eventType,
 		})
 	}
+	if c.prometheusService != nil {
+		c.prometheusService.RecordDuration(ctx, metrics.MetricProcessingTime, float64(duration.Milliseconds()), map[string]string{
+			"queue":      queueName,
+			"event_type": eventType,
+		})
+		c.prometheusService.Increment(ctx, metrics.MetricMessagesSuccess, map[string]string{
+			"queue":      queueName,
+			"event_type": eventType,
+		})
+	}
 
 	// Mark as processed
 	if c.idempotencyStore != nil {
@@ -756,6 +766,16 @@ func (c *Client) processMessageWithURL(ctx context.Context, queueURL string, msg
 			"event_type": eventType,
 		})
 	}
+	if c.prometheusService != nil {
+		c.prometheusService.RecordDuration(ctx, metrics.MetricProcessingTime, float64(duration.Milliseconds()), map[string]string{
+			"queue":      queueURL,
+			"event_type": eventType,
+		})
+		c.prometheusService.Increment(ctx, metrics.MetricMessagesSuccess, map[string]string{
+			"queue":      queueURL,
+			"event_type": eventType,
+		})
+	}
 
 	// Mark as processed
 	if c.idempotencyStore != nil {
@@ -803,6 +823,12 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 		if c.metricsService != nil {
 			c.metricsService.Increment(ctx, metrics.MetricValidationErrors, nil)
 		}
+		if c.prometheusService != nil {
+			c.prometheusService.Increment(ctx, metrics.MetricValidationErrors, map[string]string{
+				"queue":      stats.queueName,
+				"event_type": "",
+			})
+		}
 
 	case ErrorTypeTransient:
 		stats.transientErrors++
@@ -814,6 +840,12 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 		if c.metricsService != nil {
 			c.metricsService.Increment(ctx, metrics.MetricTransientErrors, nil)
 		}
+		if c.prometheusService != nil {
+			c.prometheusService.Increment(ctx, metrics.MetricTransientErrors, map[string]string{
+				"queue":      stats.queueName,
+				"event_type": "",
+			})
+		}
 
 	case ErrorTypePermanent:
 		stats.permanentErrors++
@@ -824,6 +856,12 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 		c.deleteMessageWithURL(ctx, queueURL, receiptHandle)
 		if c.metricsService != nil {
 			c.metricsService.Increment(ctx, metrics.MetricPermanentErrors, nil)
+		}
+		if c.prometheusService != nil {
+			c.prometheusService.Increment(ctx, metrics.MetricPermanentErrors, map[string]string{
+				"queue":      stats.queueName,
+				"event_type": "",
+			})
 		}
 
 	default:
