@@ -53,6 +53,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/go-redis/redis/v8"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
@@ -203,6 +204,7 @@ func New(opts ...Option) (*Client, error) {
 		promConfig := metrics.PrometheusConfig{
 			Namespace: cfg.SQS.Prometheus.Namespace,
 			Subsystem: cfg.SQS.Prometheus.Subsystem,
+			Registry:  options.prometheusRegistry,
 		}
 		client.prometheusService = metrics.NewPrometheusService(logger, promConfig)
 		if err := client.prometheusService.Register(); err != nil {
@@ -577,6 +579,35 @@ func (c *Client) PrometheusHandler() http.Handler {
 // PrometheusEnabled returns true if Prometheus metrics are enabled.
 func (c *Client) PrometheusEnabled() bool {
 	return c.prometheusService != nil
+}
+
+// PrometheusCollectors returns all Prometheus collectors used by this client.
+// This allows manual registration to a custom registry if needed.
+//
+// Returns nil if Prometheus metrics are not enabled.
+//
+// Example:
+//
+//	registry := prometheus.NewRegistry()
+//	// Register standard Go metrics
+//	registry.MustRegister(collectors.NewGoCollector())
+//	registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+//
+//	// Register your own application metrics
+//	registry.MustRegister(myCustomCounter)
+//
+//	// Register SQS messaging metrics
+//	for _, collector := range client.PrometheusCollectors() {
+//	    registry.MustRegister(collector)
+//	}
+//
+//	// Use the combined registry
+//	router.GET("/metrics", gin.WrapH(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))
+func (c *Client) PrometheusCollectors() []prometheus.Collector {
+	if c.prometheusService == nil {
+		return nil
+	}
+	return c.prometheusService.Collectors()
 }
 
 // SetTargetQueue maps an event type to a target queue.

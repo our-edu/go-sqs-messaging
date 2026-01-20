@@ -237,15 +237,68 @@ results, err := client.PublishBatch(ctx, "order-events", []sqsmessaging.BatchMes
 
 ### Prometheus Metrics
 
-The library exposes Prometheus metrics that are automatically merged with your application's existing metrics. All SQS messaging metrics will be available on your existing `/metrics` endpoint.
+The library exposes Prometheus metrics that can be integrated with your application's existing metrics setup.
 
-#### Enable Prometheus Metrics
+#### Enable Prometheus Metrics (Default Registry)
+
+By default, metrics are registered with Prometheus's default registry:
 
 ```go
 client, err := sqsmessaging.New(
     sqsmessaging.WithPrometheusMetrics(true, "sqsmessaging"),
     // ... other options
 )
+
+// Use the standard promhttp.Handler() - SQS metrics will be included automatically
+router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+```
+
+#### Using a Custom Registry
+
+If you're using a custom Prometheus registry, you have two options:
+
+**Option 1: Pass your registry to the library**
+
+```go
+registry := prometheus.NewRegistry()
+
+// Register your own metrics
+registry.MustRegister(myCustomCounter)
+
+client, err := sqsmessaging.New(
+    sqsmessaging.WithPrometheusMetrics(true, "sqsmessaging"),
+    sqsmessaging.WithPrometheusRegistry(registry),  // Pass your custom registry
+    // ... other options
+)
+
+// Use promhttp.HandlerFor with your custom registry
+router.GET("/metrics", gin.WrapH(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))
+```
+
+**Option 2: Manually register collectors**
+
+```go
+registry := prometheus.NewRegistry()
+
+// Register standard Go metrics
+registry.MustRegister(collectors.NewGoCollector())
+registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
+// Register your own application metrics
+registry.MustRegister(myCustomCounter)
+
+client, err := sqsmessaging.New(
+    sqsmessaging.WithPrometheusMetrics(true, "sqsmessaging"),
+    // ... other options
+)
+
+// Register SQS messaging metrics to your custom registry
+for _, collector := range client.PrometheusCollectors() {
+    registry.MustRegister(collector)
+}
+
+// Use promhttp.HandlerFor with your custom registry
+router.GET("/metrics", gin.WrapH(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))
 ```
 
 #### Available Metrics

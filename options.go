@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
@@ -12,12 +13,13 @@ import (
 
 // Options holds all configuration options for the client.
 type Options struct {
-	config      *config.Config
-	serviceName string
-	logger      zerolog.Logger
-	loggerSet   bool
-	redisClient *redis.Client
-	db          *gorm.DB
+	config             *config.Config
+	serviceName        string
+	logger             zerolog.Logger
+	loggerSet          bool
+	redisClient        *redis.Client
+	db                 *gorm.DB
+	prometheusRegistry prometheus.Registerer
 }
 
 // Option is a function that configures the client.
@@ -259,6 +261,44 @@ func WithPrometheusMetrics(enabled bool, namespace string) Option {
 		if namespace != "" {
 			o.config.SQS.Prometheus.Namespace = namespace
 		}
+	}
+}
+
+// WithPrometheusRegistry sets a custom Prometheus registry for metrics registration.
+// Use this when you have your own Prometheus registry and want SQS metrics
+// to be registered there instead of the default global registry.
+//
+// This is useful when:
+//   - You're using a custom registry for isolation
+//   - You want to combine SQS metrics with your existing application metrics
+//   - You need more control over metric registration
+//
+// Parameters:
+//   - registry: A prometheus.Registerer (can be *prometheus.Registry or prometheus.DefaultRegisterer)
+//
+// Example with custom registry:
+//
+//	registry := prometheus.NewRegistry()
+//	client, err := sqsmessaging.New(
+//	    sqsmessaging.WithPrometheusMetrics(true, "myapp_sqs"),
+//	    sqsmessaging.WithPrometheusRegistry(registry),
+//	)
+//
+//	// Use promhttp.HandlerFor with your custom registry
+//	router.GET("/metrics", gin.WrapH(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))
+//
+// Example with default registry (explicitly):
+//
+//	client, err := sqsmessaging.New(
+//	    sqsmessaging.WithPrometheusMetrics(true, "myapp_sqs"),
+//	    sqsmessaging.WithPrometheusRegistry(prometheus.DefaultRegisterer),
+//	)
+//
+//	// Use the standard promhttp.Handler()
+//	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+func WithPrometheusRegistry(registry prometheus.Registerer) Option {
+	return func(o *Options) {
+		o.prometheusRegistry = registry
 	}
 }
 

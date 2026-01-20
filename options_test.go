@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/our-edu/go-sqs-messaging/internal/config"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestWithAWSCredentials(t *testing.T) {
@@ -371,6 +372,73 @@ func TestWithOnMessageEnd(t *testing.T) {
 	if !called {
 		t.Error("expected callback to be called")
 	}
+}
+
+func TestWithPrometheusMetrics(t *testing.T) {
+	tests := []struct {
+		name              string
+		enabled           bool
+		namespace         string
+		expectedEnabled   bool
+		expectedNamespace string
+	}{
+		{"enabled with namespace", true, "myapp_sqs", true, "myapp_sqs"},
+		{"disabled", false, "", false, "sqsmessaging"},
+		{"enabled empty namespace", true, "", true, "sqsmessaging"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &Options{config: defaultTestConfig()}
+			WithPrometheusMetrics(tt.enabled, tt.namespace)(opts)
+
+			if opts.config.SQS.Prometheus.Enabled != tt.expectedEnabled {
+				t.Errorf("expected Enabled %v, got %v", tt.expectedEnabled, opts.config.SQS.Prometheus.Enabled)
+			}
+			if opts.config.SQS.Prometheus.Namespace != tt.expectedNamespace {
+				t.Errorf("expected Namespace '%s', got '%s'", tt.expectedNamespace, opts.config.SQS.Prometheus.Namespace)
+			}
+		})
+	}
+}
+
+func TestWithPrometheusRegistry(t *testing.T) {
+	t.Run("with custom registry", func(t *testing.T) {
+		opts := &Options{config: defaultTestConfig()}
+		registry := prometheus.NewRegistry()
+
+		WithPrometheusRegistry(registry)(opts)
+
+		if opts.prometheusRegistry == nil {
+			t.Error("expected prometheusRegistry to be set")
+		}
+		if opts.prometheusRegistry != registry {
+			t.Error("expected prometheusRegistry to match provided registry")
+		}
+	})
+
+	t.Run("with default registerer", func(t *testing.T) {
+		opts := &Options{config: defaultTestConfig()}
+
+		WithPrometheusRegistry(prometheus.DefaultRegisterer)(opts)
+
+		if opts.prometheusRegistry == nil {
+			t.Error("expected prometheusRegistry to be set")
+		}
+		if opts.prometheusRegistry != prometheus.DefaultRegisterer {
+			t.Error("expected prometheusRegistry to match default registerer")
+		}
+	})
+
+	t.Run("with nil registry", func(t *testing.T) {
+		opts := &Options{config: defaultTestConfig()}
+
+		WithPrometheusRegistry(nil)(opts)
+
+		if opts.prometheusRegistry != nil {
+			t.Error("expected prometheusRegistry to be nil")
+		}
+	})
 }
 
 // Helper to create default test config

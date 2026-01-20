@@ -17,6 +17,10 @@ type PrometheusService struct {
 	namespace string
 	subsystem string
 
+	// Custom registry (if provided)
+	registry prometheus.Registerer
+	gatherer prometheus.Gatherer
+
 	// Counters
 	messagesProcessed *prometheus.CounterVec
 	messagesSuccess   *prometheus.CounterVec
@@ -42,8 +46,9 @@ type PrometheusService struct {
 
 // PrometheusConfig holds configuration for Prometheus metrics
 type PrometheusConfig struct {
-	Namespace string // Metric namespace (e.g., "sqsmessaging")
-	Subsystem string // Metric subsystem (e.g., "consumer")
+	Namespace string                // Metric namespace (e.g., "sqsmessaging")
+	Subsystem string                // Metric subsystem (e.g., "consumer")
+	Registry  prometheus.Registerer // Custom registry (optional, defaults to prometheus.DefaultRegisterer)
 }
 
 // DefaultPrometheusConfig returns the default Prometheus configuration
@@ -51,6 +56,7 @@ func DefaultPrometheusConfig() PrometheusConfig {
 	return PrometheusConfig{
 		Namespace: "sqsmessaging",
 		Subsystem: "",
+		Registry:  nil, // Will use default registerer
 	}
 }
 
@@ -64,6 +70,14 @@ func NewPrometheusService(logger zerolog.Logger, cfg PrometheusConfig) *Promethe
 		logger:    logger,
 		namespace: cfg.Namespace,
 		subsystem: cfg.Subsystem,
+		registry:  cfg.Registry,
+	}
+
+	// If a custom registry is provided, try to get the gatherer for it
+	if cfg.Registry != nil {
+		if reg, ok := cfg.Registry.(*prometheus.Registry); ok {
+			s.gatherer = reg
+		}
 	}
 
 	s.initMetrics()
@@ -197,7 +211,10 @@ func (s *PrometheusService) initMetrics() {
 	)
 }
 
-// Register registers all metrics with the default Prometheus registry
+// Register registers all metrics with the Prometheus registry.
+// If a custom registry was provided via PrometheusConfig.Registry, metrics
+// will be registered there. Otherwise, metrics are registered with the
+// default Prometheus registry.
 func (s *PrometheusService) Register() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -221,8 +238,14 @@ func (s *PrometheusService) Register() error {
 		s.publishDuration,
 	}
 
+	// Use custom registry if provided, otherwise use default
+	registerer := s.registry
+	if registerer == nil {
+		registerer = prometheus.DefaultRegisterer
+	}
+
 	for _, c := range collectors {
-		if err := prometheus.Register(c); err != nil {
+		if err := registerer.Register(c); err != nil {
 			// Ignore already registered errors
 			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
 				return err
@@ -235,7 +258,36 @@ func (s *PrometheusService) Register() error {
 	return nil
 }
 
+// Collectors returns all Prometheus collectors used by this service.
+// This allows manual registration to a custom registry if needed.
+//
+// Example:
+//
+//	registry := prometheus.NewRegistry()
+//	for _, collector := range prometheusService.Collectors() {
+//	    registry.MustRegister(collector)
+//	}
+func (s *PrometheusService) Collectors() []prometheus.Collector {
+	return []prometheus.Collector{
+		s.messagesProcessed,
+		s.messagesSuccess,
+		s.validationErrors,
+		s.transientErrors,
+		s.permanentErrors,
+		s.messagesPublished,
+		s.publishErrors,
+		s.queueDepth,
+		s.dlqDepth,
+		s.consumerCount,
+		s.processingDuration,
+		s.publishDuration,
+	}
+}
+
 // Handler returns an http.Handler for the /metrics endpoint.
+// If a custom registry was provided, returns a handler for that registry.
+// Otherwise, returns the default promhttp.Handler().
+//
 // Use this with any HTTP framework that accepts http.Handler.
 //
 // Example with net/http:
@@ -254,6 +306,11 @@ func (s *PrometheusService) Register() error {
 //
 //	r.Handle("/metrics", client.PrometheusHandler())
 func (s *PrometheusService) Handler() http.Handler {
+	// If we have a custom gatherer (from custom registry), use it
+	if s.gatherer != nil {
+		return promhttp.HandlerFor(s.gatherer, promhttp.HandlerOpts{})
+	}
+	// Otherwise use the default handler
 	return promhttp.Handler()
 }
 
