@@ -77,15 +77,14 @@ type Client struct {
 	db               *gorm.DB
 	logger           zerolog.Logger
 
-	resolver          *sqsdriver.Resolver
-	targetResolver    *sqsdriver.TargetQueueResolver
-	publisher         *sqsdriver.Publisher
-	consumer          *sqsdriver.Consumer
-	metricsService    *metrics.CloudWatchService
-	prometheusService *metrics.PrometheusService
-	idempotencyStore  *storage.IdempotencyStore
-	messagingService  *messaging.Service
-	eventRegistry     *messaging.EventRegistry
+	resolver         *sqsdriver.Resolver
+	targetResolver   *sqsdriver.TargetQueueResolver
+	publisher        *sqsdriver.Publisher
+	consumer         *sqsdriver.Consumer
+	metricsProvider  metrics.Provider
+	idempotencyStore *storage.IdempotencyStore
+	messagingService *messaging.Service
+	eventRegistry    *messaging.EventRegistry
 
 	serviceName string
 	mu          sync.RWMutex
@@ -195,23 +194,40 @@ func New(opts ...Option) (*Client, error) {
 	client.targetResolver = sqsdriver.NewTargetQueueResolver(cfg)
 	client.publisher = sqsdriver.NewPublisher(sqsClient, client.resolver, cfg, logger, options.serviceName)
 	client.consumer = sqsdriver.NewConsumer(sqsClient, client.resolver, cfg, logger)
-	client.metricsService = metrics.NewCloudWatchService(cloudwatchClient, cfg, logger)
 	client.eventRegistry = messaging.NewEventRegistry()
 	client.messagingService = messaging.NewService(cfg, logger)
 
-	// Initialize Prometheus metrics if enabled
-	if cfg.SQS.Prometheus.Enabled {
-		promConfig := metrics.PrometheusConfig{
-			Namespace: cfg.SQS.Prometheus.Namespace,
-			Subsystem: cfg.SQS.Prometheus.Subsystem,
-			Registry:  options.prometheusRegistry,
-		}
-		client.prometheusService = metrics.NewPrometheusService(logger, promConfig)
-		if err := client.prometheusService.Register(); err != nil {
+	// Initialize metrics provider using factory pattern
+	metricsFactory := metrics.NewFactory(metrics.FactoryConfig{
+		CloudWatchEnabled:   cfg.SQS.CloudWatch.Enabled,
+		CloudWatchNamespace: cfg.SQS.CloudWatch.Namespace,
+		CloudWatchClient:    cloudwatchClient,
+		PrometheusEnabled:   cfg.SQS.Prometheus.Enabled,
+		PrometheusNamespace: cfg.SQS.Prometheus.Namespace,
+		PrometheusSubsystem: cfg.SQS.Prometheus.Subsystem,
+		PrometheusRegistry:  options.prometheusRegistry,
+		Config:              cfg,
+		Logger:              logger,
+	})
+	client.metricsProvider = metricsFactory.Create()
+
+	// Register Prometheus metrics if enabled
+	if cp, ok := client.metricsProvider.(metrics.CollectorProvider); ok {
+		if err := cp.Register(); err != nil {
 			logger.Warn().Err(err).Msg("Failed to register Prometheus metrics")
 		}
-		logger.Info().Msg("Prometheus metrics enabled - use client.PrometheusHandler() to expose metrics endpoint")
+		logger.Info().
+			Str("namespace", cfg.SQS.Prometheus.Namespace).
+			Str("subsystem", cfg.SQS.Prometheus.Subsystem).
+			Msg("Prometheus metrics enabled - use client.PrometheusHandler() to expose metrics endpoint")
 	}
+
+	// Log metrics configuration
+	logger.Info().
+		Bool("cloudwatch_enabled", cfg.SQS.CloudWatch.Enabled).
+		Bool("prometheus_enabled", cfg.SQS.Prometheus.Enabled).
+		Str("metrics_provider", client.metricsProvider.Name()).
+		Msg("Metrics provider initialized")
 
 	// Initialize idempotency store if DB is provided (Redis is already verified)
 	if client.db != nil {
@@ -570,15 +586,16 @@ func (c *Client) CleanupProcessedEvents(ctx context.Context, olderThanDays int) 
 //	r := chi.NewRouter()
 //	r.Handle("/metrics", client.PrometheusHandler())
 func (c *Client) PrometheusHandler() http.Handler {
-	if c.prometheusService == nil {
-		return nil
+	if hp, ok := c.metricsProvider.(metrics.HTTPProvider); ok {
+		return hp.Handler()
 	}
-	return c.prometheusService.Handler()
+	return nil
 }
 
 // PrometheusEnabled returns true if Prometheus metrics are enabled.
 func (c *Client) PrometheusEnabled() bool {
-	return c.prometheusService != nil
+	_, ok := c.metricsProvider.(metrics.HTTPProvider)
+	return ok && c.config.SQS.Prometheus.Enabled
 }
 
 // PrometheusCollectors returns all Prometheus collectors used by this client.
@@ -604,10 +621,16 @@ func (c *Client) PrometheusEnabled() bool {
 //	// Use the combined registry
 //	router.GET("/metrics", gin.WrapH(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))
 func (c *Client) PrometheusCollectors() []prometheus.Collector {
-	if c.prometheusService == nil {
-		return nil
+	if cp, ok := c.metricsProvider.(metrics.CollectorProvider); ok {
+		return cp.Collectors()
 	}
-	return c.prometheusService.Collectors()
+	return nil
+}
+
+// MetricsProvider returns the underlying metrics provider.
+// This allows direct access to the metrics provider for advanced use cases.
+func (c *Client) MetricsProvider() metrics.Provider {
+	return c.metricsProvider
 }
 
 // SetTargetQueue maps an event type to a target queue.

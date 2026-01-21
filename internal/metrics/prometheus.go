@@ -11,11 +11,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// PrometheusService handles exposing metrics to Prometheus
-type PrometheusService struct {
+// PrometheusProvider handles exposing metrics to Prometheus
+type PrometheusProvider struct {
 	logger    zerolog.Logger
 	namespace string
 	subsystem string
+	enabled   bool
 
 	// Custom registry (if provided)
 	registry prometheus.Registerer
@@ -46,6 +47,7 @@ type PrometheusService struct {
 
 // PrometheusConfig holds configuration for Prometheus metrics
 type PrometheusConfig struct {
+	Enabled   bool                  // Whether Prometheus metrics are enabled
 	Namespace string                // Metric namespace (e.g., "sqsmessaging")
 	Subsystem string                // Metric subsystem (e.g., "consumer")
 	Registry  prometheus.Registerer // Custom registry (optional, defaults to prometheus.DefaultRegisterer)
@@ -54,23 +56,25 @@ type PrometheusConfig struct {
 // DefaultPrometheusConfig returns the default Prometheus configuration
 func DefaultPrometheusConfig() PrometheusConfig {
 	return PrometheusConfig{
+		Enabled:   true,
 		Namespace: "sqsmessaging",
 		Subsystem: "",
 		Registry:  nil, // Will use default registerer
 	}
 }
 
-// NewPrometheusService creates a new Prometheus metrics service
-func NewPrometheusService(logger zerolog.Logger, cfg PrometheusConfig) *PrometheusService {
+// NewPrometheusProvider creates a new Prometheus metrics provider
+func NewPrometheusProvider(logger zerolog.Logger, cfg PrometheusConfig) *PrometheusProvider {
 	if cfg.Namespace == "" {
 		cfg.Namespace = "sqsmessaging"
 	}
 
-	s := &PrometheusService{
+	s := &PrometheusProvider{
 		logger:    logger,
 		namespace: cfg.Namespace,
 		subsystem: cfg.Subsystem,
 		registry:  cfg.Registry,
+		enabled:   cfg.Enabled,
 	}
 
 	// If a custom registry is provided, try to get the gatherer for it
@@ -84,7 +88,22 @@ func NewPrometheusService(logger zerolog.Logger, cfg PrometheusConfig) *Promethe
 	return s
 }
 
-func (s *PrometheusService) initMetrics() {
+// Ensure PrometheusProvider implements Provider, HTTPProvider, and CollectorProvider interfaces
+var _ Provider = (*PrometheusProvider)(nil)
+var _ HTTPProvider = (*PrometheusProvider)(nil)
+var _ CollectorProvider = (*PrometheusProvider)(nil)
+
+// Name returns the provider name
+func (s *PrometheusProvider) Name() string {
+	return string(ProviderTypePrometheus)
+}
+
+// Enabled returns whether Prometheus metrics are enabled
+func (s *PrometheusProvider) Enabled() bool {
+	return s.enabled
+}
+
+func (s *PrometheusProvider) initMetrics() {
 	// Counters
 	s.messagesProcessed = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -215,7 +234,7 @@ func (s *PrometheusService) initMetrics() {
 // If a custom registry was provided via PrometheusConfig.Registry, metrics
 // will be registered there. Otherwise, metrics are registered with the
 // default Prometheus registry.
-func (s *PrometheusService) Register() error {
+func (s *PrometheusProvider) Register() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -260,14 +279,7 @@ func (s *PrometheusService) Register() error {
 
 // Collectors returns all Prometheus collectors used by this service.
 // This allows manual registration to a custom registry if needed.
-//
-// Example:
-//
-//	registry := prometheus.NewRegistry()
-//	for _, collector := range prometheusService.Collectors() {
-//	    registry.MustRegister(collector)
-//	}
-func (s *PrometheusService) Collectors() []prometheus.Collector {
+func (s *PrometheusProvider) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{
 		s.messagesProcessed,
 		s.messagesSuccess,
@@ -287,25 +299,7 @@ func (s *PrometheusService) Collectors() []prometheus.Collector {
 // Handler returns an http.Handler for the /metrics endpoint.
 // If a custom registry was provided, returns a handler for that registry.
 // Otherwise, returns the default promhttp.Handler().
-//
-// Use this with any HTTP framework that accepts http.Handler.
-//
-// Example with net/http:
-//
-//	http.Handle("/metrics", client.PrometheusHandler())
-//
-// Example with Gin:
-//
-//	router.GET("/metrics", gin.WrapH(client.PrometheusHandler()))
-//
-// Example with Echo:
-//
-//	e.GET("/metrics", echo.WrapHandler(client.PrometheusHandler()))
-//
-// Example with Chi:
-//
-//	r.Handle("/metrics", client.PrometheusHandler())
-func (s *PrometheusService) Handler() http.Handler {
+func (s *PrometheusProvider) Handler() http.Handler {
 	// If we have a custom gatherer (from custom registry), use it
 	if s.gatherer != nil {
 		return promhttp.HandlerFor(s.gatherer, promhttp.HandlerOpts{})
@@ -315,23 +309,23 @@ func (s *PrometheusService) Handler() http.Handler {
 }
 
 // HandlerFunc returns an http.HandlerFunc for the /metrics endpoint.
-// Use this when you need a HandlerFunc instead of Handler.
-//
-// Example:
-//
-//	http.HandleFunc("/metrics", client.PrometheusHandlerFunc())
-func (s *PrometheusService) HandlerFunc() http.HandlerFunc {
-	return promhttp.Handler().ServeHTTP
+func (s *PrometheusProvider) HandlerFunc() http.HandlerFunc {
+	return s.Handler().ServeHTTP
 }
 
-// PutMetric implements the MetricsService interface
-func (s *PrometheusService) PutMetric(ctx context.Context, name string, value float64, unit string, dimensions map[string]string) error {
+// PutMetric implements the Provider interface
+func (s *PrometheusProvider) PutMetric(ctx context.Context, name string, value float64, unit string, dimensions map[string]string) error {
+	if !s.enabled {
+		return nil
+	}
+
 	queue := dimensions["queue"]
 	eventType := dimensions["event_type"]
 
 	switch name {
 	case MetricMessagesProcessed:
-		s.messagesProcessed.WithLabelValues(queue, eventType, "processed").Add(value)
+		status := dimensions["status"]
+		s.messagesProcessed.WithLabelValues(queue, eventType, status).Add(value)
 	case MetricMessagesSuccess:
 		s.messagesSuccess.WithLabelValues(queue, eventType).Add(value)
 	case MetricValidationErrors:
@@ -340,62 +334,138 @@ func (s *PrometheusService) PutMetric(ctx context.Context, name string, value fl
 		s.transientErrors.WithLabelValues(queue, eventType).Add(value)
 	case MetricPermanentErrors:
 		s.permanentErrors.WithLabelValues(queue, eventType).Add(value)
+	case MetricMessagesPublished:
+		s.messagesPublished.WithLabelValues(queue, eventType).Add(value)
+	case MetricPublishErrors:
+		s.publishErrors.WithLabelValues(queue, eventType).Add(value)
 	case MetricProcessingTime:
 		s.processingDuration.WithLabelValues(queue, eventType).Observe(value)
+	case MetricPublishDuration:
+		s.publishDuration.WithLabelValues(queue, eventType).Observe(value)
 	case MetricQueueDepth:
 		s.queueDepth.WithLabelValues(queue).Set(value)
 	case MetricDLQDepth:
 		s.dlqDepth.WithLabelValues(queue).Set(value)
+	case MetricActiveConsumers:
+		s.consumerCount.WithLabelValues(queue).Set(value)
 	}
 	return nil
 }
 
-// Increment implements the MetricsService interface
-func (s *PrometheusService) Increment(ctx context.Context, name string, dimensions map[string]string) error {
+// Increment implements the Provider interface
+func (s *PrometheusProvider) Increment(ctx context.Context, name string, dimensions map[string]string) error {
 	return s.PutMetric(ctx, name, 1.0, "Count", dimensions)
 }
 
-// RecordDuration implements the MetricsService interface
-func (s *PrometheusService) RecordDuration(ctx context.Context, name string, duration float64, dimensions map[string]string) error {
+// RecordDuration implements the Provider interface
+func (s *PrometheusProvider) RecordDuration(ctx context.Context, name string, duration float64, dimensions map[string]string) error {
 	return s.PutMetric(ctx, name, duration, "Milliseconds", dimensions)
 }
 
+// IncMessagesProcessed increments the messages processed counter
+func (s *PrometheusProvider) IncMessagesProcessed(ctx context.Context, queue, eventType, status string) {
+	if s.enabled {
+		s.messagesProcessed.WithLabelValues(queue, eventType, status).Inc()
+	}
+}
+
+// IncMessagesSuccess increments the messages success counter
+func (s *PrometheusProvider) IncMessagesSuccess(ctx context.Context, queue, eventType string) {
+	if s.enabled {
+		s.messagesSuccess.WithLabelValues(queue, eventType).Inc()
+	}
+}
+
+// IncValidationErrors increments the validation errors counter
+func (s *PrometheusProvider) IncValidationErrors(ctx context.Context, queue, eventType string) {
+	if s.enabled {
+		s.validationErrors.WithLabelValues(queue, eventType).Inc()
+	}
+}
+
+// IncTransientErrors increments the transient errors counter
+func (s *PrometheusProvider) IncTransientErrors(ctx context.Context, queue, eventType string) {
+	if s.enabled {
+		s.transientErrors.WithLabelValues(queue, eventType).Inc()
+	}
+}
+
+// IncPermanentErrors increments the permanent errors counter
+func (s *PrometheusProvider) IncPermanentErrors(ctx context.Context, queue, eventType string) {
+	if s.enabled {
+		s.permanentErrors.WithLabelValues(queue, eventType).Inc()
+	}
+}
+
 // IncMessagesPublished increments the messages published counter
-func (s *PrometheusService) IncMessagesPublished(queue, eventType string) {
-	s.messagesPublished.WithLabelValues(queue, eventType).Inc()
+func (s *PrometheusProvider) IncMessagesPublished(ctx context.Context, queue, eventType string) {
+	if s.enabled {
+		s.messagesPublished.WithLabelValues(queue, eventType).Inc()
+	}
 }
 
 // IncPublishErrors increments the publish errors counter
-func (s *PrometheusService) IncPublishErrors(queue, eventType string) {
-	s.publishErrors.WithLabelValues(queue, eventType).Inc()
+func (s *PrometheusProvider) IncPublishErrors(ctx context.Context, queue, eventType string) {
+	if s.enabled {
+		s.publishErrors.WithLabelValues(queue, eventType).Inc()
+	}
+}
+
+// ObserveProcessingDuration records the processing duration
+func (s *PrometheusProvider) ObserveProcessingDuration(ctx context.Context, queue, eventType string, durationMs float64) {
+	if s.enabled {
+		s.processingDuration.WithLabelValues(queue, eventType).Observe(durationMs)
+	}
 }
 
 // ObservePublishDuration records the publish duration
-func (s *PrometheusService) ObservePublishDuration(queue, eventType string, durationMs float64) {
-	s.publishDuration.WithLabelValues(queue, eventType).Observe(durationMs)
+func (s *PrometheusProvider) ObservePublishDuration(ctx context.Context, queue, eventType string, durationMs float64) {
+	if s.enabled {
+		s.publishDuration.WithLabelValues(queue, eventType).Observe(durationMs)
+	}
 }
 
 // SetQueueDepth sets the current queue depth
-func (s *PrometheusService) SetQueueDepth(queue string, depth float64) {
-	s.queueDepth.WithLabelValues(queue).Set(depth)
+func (s *PrometheusProvider) SetQueueDepth(ctx context.Context, queue string, depth float64) {
+	if s.enabled {
+		s.queueDepth.WithLabelValues(queue).Set(depth)
+	}
 }
 
 // SetDLQDepth sets the current DLQ depth
-func (s *PrometheusService) SetDLQDepth(queue string, depth float64) {
-	s.dlqDepth.WithLabelValues(queue).Set(depth)
+func (s *PrometheusProvider) SetDLQDepth(ctx context.Context, queue string, depth float64) {
+	if s.enabled {
+		s.dlqDepth.WithLabelValues(queue).Set(depth)
+	}
 }
 
 // SetActiveConsumers sets the number of active consumers
-func (s *PrometheusService) SetActiveConsumers(queue string, count float64) {
-	s.consumerCount.WithLabelValues(queue).Set(count)
+func (s *PrometheusProvider) SetActiveConsumers(ctx context.Context, queue string, count float64) {
+	if s.enabled {
+		s.consumerCount.WithLabelValues(queue).Set(count)
+	}
 }
 
 // IncActiveConsumers increments the active consumer count
-func (s *PrometheusService) IncActiveConsumers(queue string) {
-	s.consumerCount.WithLabelValues(queue).Inc()
+func (s *PrometheusProvider) IncActiveConsumers(ctx context.Context, queue string) {
+	if s.enabled {
+		s.consumerCount.WithLabelValues(queue).Inc()
+	}
 }
 
 // DecActiveConsumers decrements the active consumer count
-func (s *PrometheusService) DecActiveConsumers(queue string) {
-	s.consumerCount.WithLabelValues(queue).Dec()
+func (s *PrometheusProvider) DecActiveConsumers(ctx context.Context, queue string) {
+	if s.enabled {
+		s.consumerCount.WithLabelValues(queue).Dec()
+	}
+}
+
+// Legacy type alias for backward compatibility
+// Deprecated: Use PrometheusProvider instead
+type PrometheusService = PrometheusProvider
+
+// NewPrometheusService creates a new Prometheus metrics service
+// Deprecated: Use NewPrometheusProvider instead
+func NewPrometheusService(logger zerolog.Logger, cfg PrometheusConfig) *PrometheusService {
+	return NewPrometheusProvider(logger, cfg)
 }

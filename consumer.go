@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/our-edu/go-sqs-messaging/internal/contracts"
-	"github.com/our-edu/go-sqs-messaging/internal/metrics"
 	"github.com/our-edu/go-sqs-messaging/pkg/envelope"
 )
 
@@ -233,25 +232,9 @@ func (c *Client) processInternalMessage(ctx context.Context, msg contracts.Messa
 	}
 	duration := time.Since(startTime)
 
-	// Record metrics
-	if c.metricsService != nil {
-		c.metricsService.RecordDuration(ctx, metrics.MetricProcessingTime, float64(duration.Milliseconds()), map[string]string{
-			"event_type": eventType,
-		})
-		c.metricsService.Increment(ctx, metrics.MetricMessagesSuccess, map[string]string{
-			"event_type": eventType,
-		})
-	}
-	if c.prometheusService != nil {
-		c.prometheusService.RecordDuration(ctx, metrics.MetricProcessingTime, float64(duration.Milliseconds()), map[string]string{
-			"queue":      queueName,
-			"event_type": eventType,
-		})
-		c.prometheusService.Increment(ctx, metrics.MetricMessagesSuccess, map[string]string{
-			"queue":      queueName,
-			"event_type": eventType,
-		})
-	}
+	// Record metrics using unified provider
+	c.metricsProvider.ObserveProcessingDuration(ctx, queueName, eventType, float64(duration.Milliseconds()))
+	c.metricsProvider.IncMessagesSuccess(ctx, queueName, eventType)
 
 	// Mark as processed
 	if c.idempotencyStore != nil {
@@ -295,15 +278,7 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 			Err(err).
 			Msg("Validation error, deleting message")
 		c.consumer.DeleteMessage(ctx, receiptHandle)
-		if c.metricsService != nil {
-			c.metricsService.Increment(ctx, metrics.MetricValidationErrors, nil)
-		}
-		if c.prometheusService != nil {
-			c.prometheusService.Increment(ctx, metrics.MetricValidationErrors, map[string]string{
-				"queue":      stats.queueName,
-				"event_type": "",
-			})
-		}
+		c.metricsProvider.IncValidationErrors(ctx, stats.queueName, "")
 
 	case ErrorTypeTransient:
 		stats.transientErrors++
@@ -312,15 +287,7 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 			Err(err).
 			Msg("Transient error, leaving for retry")
 		// Don't delete - will be retried or sent to DLQ
-		if c.metricsService != nil {
-			c.metricsService.Increment(ctx, metrics.MetricTransientErrors, nil)
-		}
-		if c.prometheusService != nil {
-			c.prometheusService.Increment(ctx, metrics.MetricTransientErrors, map[string]string{
-				"queue":      stats.queueName,
-				"event_type": "",
-			})
-		}
+		c.metricsProvider.IncTransientErrors(ctx, stats.queueName, "")
 
 	case ErrorTypePermanent:
 		stats.permanentErrors++
@@ -329,15 +296,7 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 			Err(err).
 			Msg("Permanent error, deleting message")
 		c.consumer.DeleteMessage(ctx, receiptHandle)
-		if c.metricsService != nil {
-			c.metricsService.Increment(ctx, metrics.MetricPermanentErrors, nil)
-		}
-		if c.prometheusService != nil {
-			c.prometheusService.Increment(ctx, metrics.MetricPermanentErrors, map[string]string{
-				"queue":      stats.queueName,
-				"event_type": "",
-			})
-		}
+		c.metricsProvider.IncPermanentErrors(ctx, stats.queueName, "")
 
 	default:
 		c.logger.Error().
@@ -757,25 +716,9 @@ func (c *Client) processMessageWithURL(ctx context.Context, queueURL string, msg
 	}
 	duration := time.Since(startTime)
 
-	// Record metrics
-	if c.metricsService != nil {
-		c.metricsService.RecordDuration(ctx, metrics.MetricProcessingTime, float64(duration.Milliseconds()), map[string]string{
-			"event_type": eventType,
-		})
-		c.metricsService.Increment(ctx, metrics.MetricMessagesSuccess, map[string]string{
-			"event_type": eventType,
-		})
-	}
-	if c.prometheusService != nil {
-		c.prometheusService.RecordDuration(ctx, metrics.MetricProcessingTime, float64(duration.Milliseconds()), map[string]string{
-			"queue":      queueURL,
-			"event_type": eventType,
-		})
-		c.prometheusService.Increment(ctx, metrics.MetricMessagesSuccess, map[string]string{
-			"queue":      queueURL,
-			"event_type": eventType,
-		})
-	}
+	// Record metrics using unified provider
+	c.metricsProvider.ObserveProcessingDuration(ctx, queueURL, eventType, float64(duration.Milliseconds()))
+	c.metricsProvider.IncMessagesSuccess(ctx, queueURL, eventType)
 
 	// Mark as processed
 	if c.idempotencyStore != nil {
@@ -820,15 +763,7 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 			Err(err).
 			Msg("Validation error, deleting message")
 		c.deleteMessageWithURL(ctx, queueURL, receiptHandle)
-		if c.metricsService != nil {
-			c.metricsService.Increment(ctx, metrics.MetricValidationErrors, nil)
-		}
-		if c.prometheusService != nil {
-			c.prometheusService.Increment(ctx, metrics.MetricValidationErrors, map[string]string{
-				"queue":      stats.queueName,
-				"event_type": "",
-			})
-		}
+		c.metricsProvider.IncValidationErrors(ctx, stats.queueName, "")
 
 	case ErrorTypeTransient:
 		stats.transientErrors++
@@ -837,15 +772,7 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 			Err(err).
 			Msg("Transient error, leaving for retry")
 		// Don't delete - will be retried or sent to DLQ
-		if c.metricsService != nil {
-			c.metricsService.Increment(ctx, metrics.MetricTransientErrors, nil)
-		}
-		if c.prometheusService != nil {
-			c.prometheusService.Increment(ctx, metrics.MetricTransientErrors, map[string]string{
-				"queue":      stats.queueName,
-				"event_type": "",
-			})
-		}
+		c.metricsProvider.IncTransientErrors(ctx, stats.queueName, "")
 
 	case ErrorTypePermanent:
 		stats.permanentErrors++
@@ -854,15 +781,7 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 			Err(err).
 			Msg("Permanent error, deleting message")
 		c.deleteMessageWithURL(ctx, queueURL, receiptHandle)
-		if c.metricsService != nil {
-			c.metricsService.Increment(ctx, metrics.MetricPermanentErrors, nil)
-		}
-		if c.prometheusService != nil {
-			c.prometheusService.Increment(ctx, metrics.MetricPermanentErrors, map[string]string{
-				"queue":      stats.queueName,
-				"event_type": "",
-			})
-		}
+		c.metricsProvider.IncPermanentErrors(ctx, stats.queueName, "")
 
 	default:
 		c.logger.Error().

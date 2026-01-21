@@ -106,6 +106,7 @@ type IdempotencyStore interface {
 }
 
 // MetricsService defines the interface for metrics collection
+// Deprecated: Use metrics.Provider interface instead
 type MetricsService interface {
 	// PutMetric sends a single metric
 	PutMetric(ctx context.Context, name string, value float64, unit string, dimensions map[string]string) error

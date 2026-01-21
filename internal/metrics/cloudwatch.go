@@ -13,30 +13,51 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// CloudWatchService handles sending metrics to AWS CloudWatch
-type CloudWatchService struct {
+// CloudWatchProvider handles sending metrics to AWS CloudWatch
+type CloudWatchProvider struct {
 	client    *cloudwatch.Client
 	config    *config.Config
 	logger    zerolog.Logger
 	buffer    []types.MetricDatum
 	mutex     sync.Mutex
 	batchSize int
+	enabled   bool
 }
 
-// NewCloudWatchService creates a new CloudWatch metrics service
-func NewCloudWatchService(client *cloudwatch.Client, cfg *config.Config, logger zerolog.Logger) *CloudWatchService {
-	return &CloudWatchService{
+// CloudWatchConfig holds configuration for CloudWatch provider
+type CloudWatchConfig struct {
+	Enabled   bool
+	Namespace string
+}
+
+// NewCloudWatchProvider creates a new CloudWatch metrics provider
+func NewCloudWatchProvider(client *cloudwatch.Client, cfg *config.Config, logger zerolog.Logger) *CloudWatchProvider {
+	return &CloudWatchProvider{
 		client:    client,
 		config:    cfg,
 		logger:    logger,
 		buffer:    make([]types.MetricDatum, 0),
 		batchSize: 20, // CloudWatch max is 20 per request
+		enabled:   cfg.SQS.CloudWatch.Enabled,
 	}
 }
 
+// Ensure CloudWatchProvider implements Provider interface
+var _ Provider = (*CloudWatchProvider)(nil)
+
+// Name returns the provider name
+func (s *CloudWatchProvider) Name() string {
+	return string(ProviderTypeCloudWatch)
+}
+
+// Enabled returns whether CloudWatch metrics are enabled
+func (s *CloudWatchProvider) Enabled() bool {
+	return s.enabled
+}
+
 // PutMetric sends a single metric to CloudWatch
-func (s *CloudWatchService) PutMetric(ctx context.Context, name string, value float64, unit string, dimensions map[string]string) error {
-	if !s.config.SQS.CloudWatch.Enabled {
+func (s *CloudWatchProvider) PutMetric(ctx context.Context, name string, value float64, unit string, dimensions map[string]string) error {
+	if !s.enabled {
 		return nil
 	}
 
@@ -62,18 +83,124 @@ func (s *CloudWatchService) PutMetric(ctx context.Context, name string, value fl
 }
 
 // Increment increments a counter metric
-func (s *CloudWatchService) Increment(ctx context.Context, name string, dimensions map[string]string) error {
+func (s *CloudWatchProvider) Increment(ctx context.Context, name string, dimensions map[string]string) error {
 	return s.PutMetric(ctx, name, 1.0, "Count", dimensions)
 }
 
 // RecordDuration records a duration metric in milliseconds
-func (s *CloudWatchService) RecordDuration(ctx context.Context, name string, duration float64, dimensions map[string]string) error {
+func (s *CloudWatchProvider) RecordDuration(ctx context.Context, name string, duration float64, dimensions map[string]string) error {
 	return s.PutMetric(ctx, name, duration, "Milliseconds", dimensions)
 }
 
+// IncMessagesProcessed increments the messages processed counter
+func (s *CloudWatchProvider) IncMessagesProcessed(ctx context.Context, queue, eventType, status string) {
+	s.Increment(ctx, MetricMessagesProcessed, map[string]string{
+		"queue":      queue,
+		"event_type": eventType,
+		"status":     status,
+	})
+}
+
+// IncMessagesSuccess increments the success counter
+func (s *CloudWatchProvider) IncMessagesSuccess(ctx context.Context, queue, eventType string) {
+	s.Increment(ctx, MetricMessagesSuccess, map[string]string{
+		"queue":      queue,
+		"event_type": eventType,
+	})
+}
+
+// IncValidationErrors increments validation errors counter
+func (s *CloudWatchProvider) IncValidationErrors(ctx context.Context, queue, eventType string) {
+	s.Increment(ctx, MetricValidationErrors, map[string]string{
+		"queue":      queue,
+		"event_type": eventType,
+	})
+}
+
+// IncTransientErrors increments transient errors counter
+func (s *CloudWatchProvider) IncTransientErrors(ctx context.Context, queue, eventType string) {
+	s.Increment(ctx, MetricTransientErrors, map[string]string{
+		"queue":      queue,
+		"event_type": eventType,
+	})
+}
+
+// IncPermanentErrors increments permanent errors counter
+func (s *CloudWatchProvider) IncPermanentErrors(ctx context.Context, queue, eventType string) {
+	s.Increment(ctx, MetricPermanentErrors, map[string]string{
+		"queue":      queue,
+		"event_type": eventType,
+	})
+}
+
+// IncMessagesPublished increments the messages published counter
+func (s *CloudWatchProvider) IncMessagesPublished(ctx context.Context, queue, eventType string) {
+	s.Increment(ctx, MetricMessagesPublished, map[string]string{
+		"queue":      queue,
+		"event_type": eventType,
+	})
+}
+
+// IncPublishErrors increments the publish errors counter
+func (s *CloudWatchProvider) IncPublishErrors(ctx context.Context, queue, eventType string) {
+	s.Increment(ctx, MetricPublishErrors, map[string]string{
+		"queue":      queue,
+		"event_type": eventType,
+	})
+}
+
+// ObserveProcessingDuration records the processing duration
+func (s *CloudWatchProvider) ObserveProcessingDuration(ctx context.Context, queue, eventType string, durationMs float64) {
+	s.RecordDuration(ctx, MetricProcessingTime, durationMs, map[string]string{
+		"queue":      queue,
+		"event_type": eventType,
+	})
+}
+
+// ObservePublishDuration records the publish duration
+func (s *CloudWatchProvider) ObservePublishDuration(ctx context.Context, queue, eventType string, durationMs float64) {
+	s.RecordDuration(ctx, MetricPublishDuration, durationMs, map[string]string{
+		"queue":      queue,
+		"event_type": eventType,
+	})
+}
+
+// SetQueueDepth sets the current queue depth
+func (s *CloudWatchProvider) SetQueueDepth(ctx context.Context, queue string, depth float64) {
+	s.PutMetric(ctx, MetricQueueDepth, depth, "Count", map[string]string{
+		"queue": queue,
+	})
+}
+
+// SetDLQDepth sets the current DLQ depth
+func (s *CloudWatchProvider) SetDLQDepth(ctx context.Context, queue string, depth float64) {
+	s.PutMetric(ctx, MetricDLQDepth, depth, "Count", map[string]string{
+		"queue": queue,
+	})
+}
+
+// SetActiveConsumers sets the number of active consumers
+func (s *CloudWatchProvider) SetActiveConsumers(ctx context.Context, queue string, count float64) {
+	s.PutMetric(ctx, MetricActiveConsumers, count, "Count", map[string]string{
+		"queue": queue,
+	})
+}
+
+// IncActiveConsumers increments the active consumer count
+func (s *CloudWatchProvider) IncActiveConsumers(ctx context.Context, queue string) {
+	// CloudWatch doesn't support increment for gauges, so we just log
+	s.logger.Debug().Str("queue", queue).Msg("IncActiveConsumers called - use SetActiveConsumers for CloudWatch")
+}
+
+// DecActiveConsumers decrements the active consumer count
+func (s *CloudWatchProvider) DecActiveConsumers(ctx context.Context, queue string) {
+	// CloudWatch doesn't support decrement for gauges, so we just log
+	s.logger.Debug().Str("queue", queue).Msg("DecActiveConsumers called - use SetActiveConsumers for CloudWatch")
+}
+
 // BufferMetric adds a metric to the buffer for batch sending
-func (s *CloudWatchService) BufferMetric(name string, value float64, unit string, dimensions map[string]string) {
-	if !s.config.SQS.CloudWatch.Enabled {
+func (s *CloudWatchProvider) BufferMetric(name string, value float64, unit string, dimensions map[string]string) {
+	if !s.enabled {
 		return
 	}
 
@@ -85,8 +212,8 @@ func (s *CloudWatchService) BufferMetric(name string, value float64, unit string
 }
 
 // FlushBuffer sends all buffered metrics to CloudWatch
-func (s *CloudWatchService) FlushBuffer(ctx context.Context) error {
-	if !s.config.SQS.CloudWatch.Enabled {
+func (s *CloudWatchProvider) FlushBuffer(ctx context.Context) error {
+	if !s.enabled {
 		return nil
 	}
 
@@ -123,7 +250,7 @@ func (s *CloudWatchService) FlushBuffer(ctx context.Context) error {
 	return nil
 }
 
-func (s *CloudWatchService) createMetricDatum(name string, value float64, unit string, dimensions map[string]string) types.MetricDatum {
+func (s *CloudWatchProvider) createMetricDatum(name string, value float64, unit string, dimensions map[string]string) types.MetricDatum {
 	datum := types.MetricDatum{
 		MetricName: aws.String(name),
 		Value:      aws.Float64(value),
@@ -155,4 +282,18 @@ const (
 	MetricProcessingTime    = "sqs.processing_time"
 	MetricQueueDepth        = "sqs.queue_depth"
 	MetricDLQDepth          = "sqs.dlq_depth"
+	MetricMessagesPublished = "sqs.messages.published"
+	MetricPublishErrors     = "sqs.publish_errors"
+	MetricPublishDuration   = "sqs.publish_duration"
+	MetricActiveConsumers   = "sqs.active_consumers"
 )
+
+// Legacy type alias for backward compatibility
+// Deprecated: Use CloudWatchProvider instead
+type CloudWatchService = CloudWatchProvider
+
+// NewCloudWatchService creates a new CloudWatch metrics service
+// Deprecated: Use NewCloudWatchProvider instead
+func NewCloudWatchService(client *cloudwatch.Client, cfg *config.Config, logger zerolog.Logger) *CloudWatchService {
+	return NewCloudWatchProvider(client, cfg, logger)
+}
