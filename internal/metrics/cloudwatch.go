@@ -261,6 +261,10 @@ func (s *CloudWatchProvider) createMetricDatum(name string, value float64, unit 
 	if len(dimensions) > 0 {
 		cwDimensions := make([]types.Dimension, 0, len(dimensions))
 		for k, v := range dimensions {
+			// CloudWatch rejects empty dimension values, use "unknown" as fallback
+			if v == "" {
+				v = "unknown"
+			}
 			cwDimensions = append(cwDimensions, types.Dimension{
 				Name:  aws.String(k),
 				Value: aws.String(v),
