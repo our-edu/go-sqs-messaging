@@ -378,6 +378,7 @@ type consumerOptions struct {
 	maxMessages       int
 	waitTime          int
 	workerCount       int
+	maxConcurrency    int
 	createIfNotExists bool
 	onError           func(error)
 	onMessageStart    func(Message)
@@ -453,6 +454,24 @@ func WithWorkerCount(count int) ConsumerOption {
 			count = 1
 		}
 		o.workerCount = count
+	}
+}
+
+// WithMaxConcurrency sets the maximum number of messages to process concurrently.
+// Default is 1 (sequential processing). Increase this for parallel message processing.
+// If a handler takes too long, this prevents blocking other messages.
+//
+// Example:
+//
+//	client.StartConsumer(ctx, "my-queue",
+//	    sqsmessaging.WithMaxConcurrency(10),
+//	)
+func WithMaxConcurrency(max int) ConsumerOption {
+	return func(o *consumerOptions) {
+		if max < 1 {
+			max = 1
+		}
+		o.maxConcurrency = max
 	}
 }
 

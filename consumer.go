@@ -99,30 +99,49 @@ func (c *Client) runConsumerLoop(ctx context.Context, queueName string, opts *co
 
 		c.logger.Debug().Int("count", len(messages)).Msg("Received messages")
 
-		// Process each message
-		for _, msg := range messages {
-			stats.totalProcessed++
-
-			// Convert to public Message type
-			pubMsg := Message{
-				MessageID:     msg.MessageID,
-				ReceiptHandle: msg.ReceiptHandle,
-				Body:          msg.Body,
-				Attributes:    msg.Attributes,
-			}
-
-			if opts.onMessageStart != nil {
-				opts.onMessageStart(pubMsg)
-			}
-
-			processErr := c.processMessage(ctx, msg, opts, &stats, queueName)
-
-			if opts.onMessageEnd != nil {
-				opts.onMessageEnd(pubMsg, processErr)
-			}
-
-			c.handleProcessResult(ctx, msg, processErr, &stats)
+		maxConc := opts.maxConcurrency
+		if maxConc < 1 {
+			maxConc = 1
 		}
+
+		sem := make(chan struct{}, maxConc)
+		var wg sync.WaitGroup
+
+		// Process each message concurrently
+		for _, msg := range messages {
+			wg.Add(1)
+			sem <- struct{}{}
+
+			go func(m contracts.Message) {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				stats.mu.Lock()
+				stats.totalProcessed++
+				stats.mu.Unlock()
+
+				pubMsg := Message{
+					MessageID:     m.MessageID,
+					ReceiptHandle: m.ReceiptHandle,
+					Body:          m.Body,
+					Attributes:    m.Attributes,
+				}
+
+				if opts.onMessageStart != nil {
+					opts.onMessageStart(pubMsg)
+				}
+
+				processErr := c.processMessage(ctx, m, opts, &stats, queueName)
+
+				if opts.onMessageEnd != nil {
+					opts.onMessageEnd(pubMsg, processErr)
+				}
+
+				c.handleProcessResult(ctx, m, processErr, &stats)
+			}(msg)
+		}
+
+		wg.Wait()
 
 		// Check error rates periodically
 		c.checkErrorRates(&stats)
@@ -130,6 +149,7 @@ func (c *Client) runConsumerLoop(ctx context.Context, queueName string, opts *co
 }
 
 type consumerStats struct {
+	mu               sync.Mutex
 	queueName        string
 	totalProcessed   int
 	success          int
@@ -259,7 +279,9 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 	messageID := msg.MessageID
 
 	if err == nil {
+		stats.mu.Lock()
 		stats.success++
+		stats.mu.Unlock()
 		// Delete successful message
 		if deleteErr := c.consumer.DeleteMessage(ctx, receiptHandle); deleteErr != nil {
 			c.logger.Error().
@@ -272,7 +294,9 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 
 	switch ClassifyError(err) {
 	case ErrorTypeValidation:
+		stats.mu.Lock()
 		stats.validationErrors++
+		stats.mu.Unlock()
 		c.logger.Warn().
 			Str("message_id", messageID).
 			Err(err).
@@ -281,7 +305,9 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 		c.metricsProvider.IncValidationErrors(ctx, stats.queueName, "")
 
 	case ErrorTypeTransient:
+		stats.mu.Lock()
 		stats.transientErrors++
+		stats.mu.Unlock()
 		c.logger.Warn().
 			Str("message_id", messageID).
 			Err(err).
@@ -290,7 +316,9 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 		c.metricsProvider.IncTransientErrors(ctx, stats.queueName, "")
 
 	case ErrorTypePermanent:
+		stats.mu.Lock()
 		stats.permanentErrors++
+		stats.mu.Unlock()
 		c.logger.Error().
 			Str("message_id", messageID).
 			Err(err).
@@ -563,30 +591,49 @@ func (c *Client) runSingleQueueConsumer(ctx context.Context, qc *queueConsumer, 
 			Int("count", len(messages)).
 			Msg("Received messages")
 
-		// Process each message
-		for _, msg := range messages {
-			stats.totalProcessed++
-
-			// Convert to public Message type
-			pubMsg := Message{
-				MessageID:     msg.MessageID,
-				ReceiptHandle: msg.ReceiptHandle,
-				Body:          msg.Body,
-				Attributes:    msg.Attributes,
-			}
-
-			if opts.onMessageStart != nil {
-				opts.onMessageStart(pubMsg)
-			}
-
-			processErr := c.processMessageWithURL(ctx, qc.queueURL, msg, opts)
-
-			if opts.onMessageEnd != nil {
-				opts.onMessageEnd(pubMsg, processErr)
-			}
-
-			c.handleProcessResultWithURL(ctx, qc.queueURL, msg, processErr, &stats)
+		maxConc := opts.maxConcurrency
+		if maxConc < 1 {
+			maxConc = 1
 		}
+
+		sem := make(chan struct{}, maxConc)
+		var wg sync.WaitGroup
+
+		// Process each message concurrently
+		for _, msg := range messages {
+			wg.Add(1)
+			sem <- struct{}{}
+
+			go func(m contracts.Message) {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				stats.mu.Lock()
+				stats.totalProcessed++
+				stats.mu.Unlock()
+
+				pubMsg := Message{
+					MessageID:     m.MessageID,
+					ReceiptHandle: m.ReceiptHandle,
+					Body:          m.Body,
+					Attributes:    m.Attributes,
+				}
+
+				if opts.onMessageStart != nil {
+					opts.onMessageStart(pubMsg)
+				}
+
+				processErr := c.processMessageWithURL(ctx, qc.queueURL, m, opts)
+
+				if opts.onMessageEnd != nil {
+					opts.onMessageEnd(pubMsg, processErr)
+				}
+
+				c.handleProcessResultWithURL(ctx, qc.queueURL, m, processErr, &stats)
+			}(msg)
+		}
+
+		wg.Wait()
 
 		// Check error rates periodically
 		c.checkErrorRates(&stats)
@@ -744,7 +791,9 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 	messageID := msg.MessageID
 
 	if err == nil {
+		stats.mu.Lock()
 		stats.success++
+		stats.mu.Unlock()
 		// Delete successful message
 		if deleteErr := c.deleteMessageWithURL(ctx, queueURL, receiptHandle); deleteErr != nil {
 			c.logger.Error().
@@ -757,7 +806,9 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 
 	switch ClassifyError(err) {
 	case ErrorTypeValidation:
+		stats.mu.Lock()
 		stats.validationErrors++
+		stats.mu.Unlock()
 		c.logger.Warn().
 			Str("message_id", messageID).
 			Err(err).
@@ -766,7 +817,9 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 		c.metricsProvider.IncValidationErrors(ctx, stats.queueName, "")
 
 	case ErrorTypeTransient:
+		stats.mu.Lock()
 		stats.transientErrors++
+		stats.mu.Unlock()
 		c.logger.Warn().
 			Str("message_id", messageID).
 			Err(err).
@@ -775,7 +828,9 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 		c.metricsProvider.IncTransientErrors(ctx, stats.queueName, "")
 
 	case ErrorTypePermanent:
+		stats.mu.Lock()
 		stats.permanentErrors++
+		stats.mu.Unlock()
 		c.logger.Error().
 			Str("message_id", messageID).
 			Err(err).

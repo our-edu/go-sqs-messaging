@@ -304,6 +304,30 @@ func TestWithWorkerCount(t *testing.T) {
 	}
 }
 
+func TestWithMaxConcurrency(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    int
+		expected int
+	}{
+		{"normal value", 5, 5},
+		{"one", 1, 1},
+		{"zero", 0, 1},
+		{"negative", -1, 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &consumerOptions{}
+			WithMaxConcurrency(tt.input)(opts)
+
+			if opts.maxConcurrency != tt.expected {
+				t.Errorf("expected maxConcurrency %d, got %d", tt.expected, opts.maxConcurrency)
+			}
+		})
+	}
+}
+
 func TestWithCreateIfNotExists(t *testing.T) {
 	tests := []struct {
 		name     string
