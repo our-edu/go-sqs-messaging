@@ -357,6 +357,29 @@ func (c *Client) RegisterHandler(eventType string, handler Handler) {
 	c.eventRegistry.Register(eventType, contracts.EventHandler(handler))
 }
 
+// RegisterHandlers registers multiple handler functions for event types.
+// The handlers will be called when a message of that type is consumed.
+//
+// Example:
+//
+//	client.RegisterHandlers(map[string]Handler{
+//	    "OrderCreated": func(ctx context.Context, payload map[string]any) error {
+//	        orderID := payload["order_id"].(string)
+//	        // Process the order...
+//	        return nil
+//	    },
+//	    "UserCreated": func(ctx context.Context, payload map[string]any) error {
+//	        userID := payload["user_id"].(string)
+//	        // Process the user...
+//	        return nil
+//	    },
+//	})
+func (c *Client) RegisterHandlers(handlers map[string]Handler) {
+	for eventType, handler := range handlers {
+		c.RegisterHandler(eventType, handler)
+	}
+}
+
 // StartConsumer starts consuming messages from the specified queue.
 // This is a blocking call that runs until the context is cancelled.
 // The queue will be automatically created with a DLQ if it doesn't exist.
