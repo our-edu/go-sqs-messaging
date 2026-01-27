@@ -3,7 +3,7 @@ package sqs
 import (
 	"context"
 
-	"github.com/our-edu/go-sqs-messaging/internal/config"
+	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	"github.com/our-edu/go-sqs-messaging/internal/contracts"
 	"github.com/rs/zerolog"
 )

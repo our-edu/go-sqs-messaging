@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"github.com/our-edu/go-sqs-messaging/internal/config"
+	"github.com/our-edu/go-sqs-messaging/pkg/config"
 )
 
 // Options holds all configuration options for the client.

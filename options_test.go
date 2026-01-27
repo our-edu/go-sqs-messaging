@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/our-edu/go-sqs-messaging/internal/config"
+	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

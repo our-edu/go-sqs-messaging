@@ -241,7 +241,7 @@ import (
     "github.com/spf13/cobra"
 
     "github.com/our-edu/go-sqs-messaging/commands"
-    "github.com/our-edu/go-sqs-messaging/internal/config"
+    "github.com/our-edu/go-sqs-messaging/pkg/config"
 )
 
 func main() {

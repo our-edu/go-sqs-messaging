@@ -11,7 +11,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/rs/zerolog"
 
-	"github.com/our-edu/go-sqs-messaging/internal/config"
+	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	"github.com/our-edu/go-sqs-messaging/internal/contracts"
 	sqsdriver "github.com/our-edu/go-sqs-messaging/internal/drivers/sqs"
 	"github.com/our-edu/go-sqs-messaging/internal/messaging"

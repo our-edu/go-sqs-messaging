@@ -16,7 +16,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/our-edu/go-sqs-messaging/internal/config"
+	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	sqsdriver "github.com/our-edu/go-sqs-messaging/internal/drivers/sqs"
 	"github.com/our-edu/go-sqs-messaging/internal/storage"
 )

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/our-edu/go-sqs-messaging/internal/config"
+	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	"github.com/our-edu/go-sqs-messaging/internal/contracts"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/rs/zerolog"

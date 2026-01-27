@@ -3,7 +3,7 @@ package metrics
 
 import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
-	"github.com/our-edu/go-sqs-messaging/internal/config"
+	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 )

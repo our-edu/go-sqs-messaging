@@ -16,8 +16,10 @@ import (
 func main() {
 	// Create a new client with configuration options
 	// Note: Redis is required for queue URL caching
+	fmt.Println("creds", os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"))
 	client, err := sqsmessaging.New(
 		// AWS Configuration
+		// sqsmessaging.WithCloudWatchMetrics(true, "Dev/Hefni"),
 		sqsmessaging.WithAWSRegion("us-east-2"),
 		sqsmessaging.WithAWSCredentials(
 			os.Getenv("AWS_ACCESS_KEY_ID"),
@@ -25,7 +27,7 @@ func main() {
 		),
 
 		// Queue Configuration
-		sqsmessaging.WithQueuePrefix("dev"),
+		sqsmessaging.WithQueuePrefix("dev-hefni"),
 		sqsmessaging.WithService("order-service"),
 
 		// Redis Configuration (required for queue URL caching)
@@ -56,18 +58,22 @@ func main() {
 		log.Fatalf("Failed to ensure queues: %v", err)
 	}
 
-	// Example: Publish a message
-	err = client.Publish(ctx, "OrderCreated", map[string]any{
-		"order_id":    "ORD-12345",
-		"customer_id": "CUST-789",
-		"total":       99.99,
-		"items": []map[string]any{
-			{"sku": "PROD-001", "quantity": 2, "price": 49.99},
-		},
-	})
-	if err != nil {
-		log.Printf("Failed to publish: %v", err)
-	}
+	go func() {
+		for {
+			err = client.Publish(ctx, "OrderCreated", map[string]any{
+				"order_id":    "ORD-12345",
+				"customer_id": "CUST-789",
+				"total":       99.99,
+				"items": []map[string]any{
+					{"sku": "PROD-001", "quantity": 2, "price": 49.99},
+				},
+			})
+			if err != nil {
+				log.Printf("Failed to publish: %v", err)
+			}
+			time.Sleep(time.Second * 3)
+		}
+	}()
 
 	// Example: Batch publish
 	results, err := client.PublishBatch(ctx, "order-events", []sqsmessaging.BatchMessage{
@@ -100,6 +106,8 @@ func main() {
 		if err := client.StartConsumer(consumerCtx, "order-events",
 			sqsmessaging.WithMaxMessages(10),
 			sqsmessaging.WithWaitTime(20),
+			sqsmessaging.WithMaxConcurrency(5),             // Process up to 5 messages concurrently to prevent blocking
+			sqsmessaging.WithHandlerTimeout(5*time.Minute), // Cancel handler after 5 minutes, message will be retried then go to DLQ
 			sqsmessaging.WithOnError(func(err error) {
 				log.Printf("Consumer error: %v", err)
 			}),
