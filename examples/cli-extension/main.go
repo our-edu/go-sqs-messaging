@@ -1,4 +1,4 @@
-// Package main provides the CLI entry point for the SQS messaging system
+// Package main demonstrates how to extend your own Cobra CLI with SQS messaging commands.
 package main
 
 import (
@@ -14,34 +14,35 @@ import (
 	"github.com/our-edu/go-sqs-messaging/internal/config"
 )
 
-var (
-	cfg    *config.Config
-	logger zerolog.Logger
-)
-
 func main() {
-	// Initialize logger
-	logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+	// Initialize logger (you can use your own logger)
+	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
 
-	// Load configuration from .env file and environment variables
-	cfg = config.Load()
+	// Load configuration (you can load your own config)
+	cfg := config.Load()
 	logger.Debug().
 		Str("driver", string(cfg.Messaging.Driver)).
 		Str("region", cfg.AWS.Region).
 		Str("prefix", cfg.SQS.Prefix).
 		Msg("Configuration loaded")
 
-	// Create root command
+	// Create your own root command
 	rootCmd := &cobra.Command{
-		Use:   "sqsmessaging",
-		Short: "SQS Messaging CLI - A Go port of Laravel SQS Messaging",
-		Long: `SQS Messaging CLI provides commands for managing AWS SQS message queues,
-consuming messages, monitoring DLQs, and more.
-
-This is a Go port of the Laravel our-edu/laravel-sqs-messaging package.`,
+		Use:   "myapp",
+		Short: "My Application CLI",
+		Long:  `My application with extended SQS messaging capabilities.`,
 	}
 
-	// Add subcommands
+	// Add your own commands here
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Show version",
+		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Println("MyApp v1.0.0")
+		},
+	})
+
+	// Add SQS messaging commands to your CLI
 	commands.AddCommands(rootCmd, cfg, logger)
 
 	// Handle graceful shutdown

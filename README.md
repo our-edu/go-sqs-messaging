@@ -224,6 +224,68 @@ messages, _ := client.InspectDLQ(ctx, "order-events", 10)
 replayed, _ := client.ReplayDLQ(ctx, "order-events", 10)
 ```
 
+## CLI Command Extension
+
+If you're building a CLI application with Cobra and want to include SQS messaging management commands, you can extend your CLI with the built-in commands:
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/rs/zerolog"
+    "github.com/spf13/cobra"
+
+    "github.com/our-edu/go-sqs-messaging/commands"
+    "github.com/our-edu/go-sqs-messaging/internal/config"
+)
+
+func main() {
+    logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+    cfg := config.Load()
+
+    rootCmd := &cobra.Command{
+        Use:   "myapp",
+        Short: "My Application CLI",
+    }
+
+    // Add your own commands
+    rootCmd.AddCommand(&cobra.Command{
+        Use:   "version",
+        Short: "Show version",
+        Run: func(cmd *cobra.Command, args []string) {
+            cmd.Println("MyApp v1.0.0")
+        },
+    })
+
+    // Add SQS messaging commands
+    commands.AddCommands(rootCmd, cfg, logger)
+
+    // Execute
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    sigCh := make(chan os.Signal, 1)
+    signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+    go func() {
+        <-sigCh
+        logger.Info().Msg("Received shutdown signal")
+        cancel()
+    }()
+
+    if err := rootCmd.ExecuteContext(ctx); err != nil {
+        logger.Error().Err(err).Msg("Command failed")
+        os.Exit(1)
+    }
+}
+```
+
+This will add commands like `consume`, `ensure`, `status`, `cleanup`, `inspect-dlq`, `monitor-dlq`, `replay-dlq`, `test-connection`, and `test-receive` to your CLI.
+
 ## Batch Publishing
 
 ```go

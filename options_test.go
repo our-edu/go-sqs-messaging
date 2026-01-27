@@ -2,6 +2,7 @@ package sqsmessaging
 
 import (
 	"testing"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/our-edu/go-sqs-messaging/internal/config"
@@ -323,6 +324,29 @@ func TestWithMaxConcurrency(t *testing.T) {
 
 			if opts.maxConcurrency != tt.expected {
 				t.Errorf("expected maxConcurrency %d, got %d", tt.expected, opts.maxConcurrency)
+			}
+		})
+	}
+}
+
+func TestWithHandlerTimeout(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    time.Duration
+		expected time.Duration
+	}{
+		{"normal value", 5 * time.Minute, 5 * time.Minute},
+		{"zero", 0, 0},
+		{"negative", -1 * time.Second, -1 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &consumerOptions{}
+			WithHandlerTimeout(tt.input)(opts)
+
+			if opts.handlerTimeout != tt.expected {
+				t.Errorf("expected handlerTimeout %v, got %v", tt.expected, opts.handlerTimeout)
 			}
 		})
 	}

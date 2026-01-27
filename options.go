@@ -379,6 +379,7 @@ type consumerOptions struct {
 	waitTime          int
 	workerCount       int
 	maxConcurrency    int
+	handlerTimeout    time.Duration
 	createIfNotExists bool
 	onError           func(error)
 	onMessageStart    func(Message)
@@ -472,6 +473,22 @@ func WithMaxConcurrency(max int) ConsumerOption {
 			max = 1
 		}
 		o.maxConcurrency = max
+	}
+}
+
+// WithHandlerTimeout sets a timeout for each message handler.
+// If a handler takes longer than this duration, it will be cancelled and
+// the message will be treated as a transient error (eligible for retry and eventual DLQ).
+// Default is 0 (no timeout).
+//
+// Example:
+//
+//	client.StartConsumer(ctx, "my-queue",
+//	    sqsmessaging.WithHandlerTimeout(5 * time.Minute),
+//	)
+func WithHandlerTimeout(timeout time.Duration) ConsumerOption {
+	return func(o *consumerOptions) {
+		o.handlerTimeout = timeout
 	}
 }
 

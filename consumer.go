@@ -241,14 +241,37 @@ func (c *Client) processInternalMessage(ctx context.Context, msg contracts.Messa
 	handlerCtx = context.WithValue(handlerCtx, ContextKeyMessageID, msg.MessageID)
 	handlerCtx = context.WithValue(handlerCtx, ContextKeyQueueName, queueName)
 
+	// Apply handler timeout if configured
+	if opts.handlerTimeout > 0 {
+		var cancel context.CancelFunc
+		handlerCtx, cancel = context.WithTimeout(handlerCtx, opts.handlerTimeout)
+		defer cancel()
+	}
+
 	// Execute handler
 	startTime := time.Now()
-	if err := handler(handlerCtx, env.Payload); err != nil {
-		// Classify the error
-		if isTransientErr(err) {
-			return NewTransientError("handler failed", err)
+	handlerErr := make(chan error, 1)
+	go func() {
+		handlerErr <- handler(handlerCtx, env.Payload)
+	}()
+
+	select {
+	case err := <-handlerErr:
+		if err != nil {
+			// Classify the error
+			if isTransientErr(err) {
+				return NewTransientError("handler failed", err)
+			}
+			return NewPermanentError("handler failed", err)
 		}
-		return NewPermanentError("handler failed", err)
+	case <-handlerCtx.Done():
+		c.logger.Error().
+			Str("event_type", eventType).
+			Str("idempotency_key", idempotencyKey).
+			Str("message_id", msg.MessageID).
+			Str("timeout_duration", opts.handlerTimeout.String()).
+			Msg("Handler timeout exceeded")
+		return NewTransientError("handler timeout exceeded", handlerCtx.Err())
 	}
 	duration := time.Since(startTime)
 
@@ -752,14 +775,37 @@ func (c *Client) processMessageWithURL(ctx context.Context, queueURL string, msg
 	handlerCtx = context.WithValue(handlerCtx, ContextKeyMessageID, msg.MessageID)
 	handlerCtx = context.WithValue(handlerCtx, ContextKeyQueueName, queueURL)
 
+	// Apply handler timeout if configured
+	if opts.handlerTimeout > 0 {
+		var cancel context.CancelFunc
+		handlerCtx, cancel = context.WithTimeout(handlerCtx, opts.handlerTimeout)
+		defer cancel()
+	}
+
 	// Execute handler
 	startTime := time.Now()
-	if err := handler(handlerCtx, env.Payload); err != nil {
-		// Classify the error
-		if isTransientErr(err) {
-			return NewTransientError("handler failed", err)
+	handlerErr := make(chan error, 1)
+	go func() {
+		handlerErr <- handler(handlerCtx, env.Payload)
+	}()
+
+	select {
+	case err := <-handlerErr:
+		if err != nil {
+			// Classify the error
+			if isTransientErr(err) {
+				return NewTransientError("handler failed", err)
+			}
+			return NewPermanentError("handler failed", err)
 		}
-		return NewPermanentError("handler failed", err)
+	case <-handlerCtx.Done():
+		c.logger.Error().
+			Str("event_type", eventType).
+			Str("idempotency_key", idempotencyKey).
+			Str("message_id", msg.MessageID).
+			Str("timeout_duration", opts.handlerTimeout.String()).
+			Msg("Handler timeout exceeded")
+		return NewTransientError("handler timeout exceeded", handlerCtx.Err())
 	}
 	duration := time.Since(startTime)
 

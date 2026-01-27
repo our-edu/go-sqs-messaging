@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"context"
@@ -8,15 +8,10 @@ import (
 	"strings"
 	"time"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/go-redis/redis/v8"
-	"github.com/spf13/cobra"
-	"gorm.io/driver/mysql"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
+	"github.com/rs/zerolog"
 
+	"github.com/our-edu/go-sqs-messaging/internal/config"
 	"github.com/our-edu/go-sqs-messaging/internal/contracts"
 	sqsdriver "github.com/our-edu/go-sqs-messaging/internal/drivers/sqs"
 	"github.com/our-edu/go-sqs-messaging/internal/messaging"
@@ -45,37 +40,8 @@ type PermanentError struct {
 
 func (e PermanentError) Error() string { return e.msg }
 
-// newConsumeCmd creates the consume command (equivalent to sqs:consume)
-func newConsumeCmd() *cobra.Command {
-	var maxMessages int
-	var waitTime int
-
-	cmd := &cobra.Command{
-		Use:   "consume [queue]",
-		Short: "Consume messages from an SQS queue",
-		Long: `Consume messages from an SQS queue. This command is designed to be run
-under Supervisor for production deployments.
-
-The consumer implements:
-- Long polling (default 20 seconds)
-- Idempotency checking (Redis + Database)
-- Error classification (validation, transient, permanent)
-- Visibility timeout extension for long-running events
-- CloudWatch metrics reporting`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			queueName := args[0]
-			return runConsumer(cmd.Context(), queueName, maxMessages, waitTime)
-		},
-	}
-
-	cmd.Flags().IntVarP(&maxMessages, "max", "m", 10, "Maximum messages to receive per poll")
-	cmd.Flags().IntVarP(&waitTime, "wait", "w", 20, "Long polling wait time in seconds")
-
-	return cmd
-}
-
-func runConsumer(ctx context.Context, queueName string, maxMessages, waitTime int) error {
+// runConsumer runs the SQS consumer
+func runConsumer(ctx context.Context, cfg *config.Config, logger zerolog.Logger, queueName string, maxMessages, waitTime int) error {
 	logger.Info().
 		Str("queue", queueName).
 		Int("max_messages", maxMessages).
@@ -83,7 +49,7 @@ func runConsumer(ctx context.Context, queueName string, maxMessages, waitTime in
 		Msg("Starting SQS consumer")
 
 	// Initialize Redis client first (required for caching)
-	redisClient, err := createRedisClient(ctx)
+	redisClient, err := createRedisClient(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create Redis client: %w", err)
 	}
@@ -93,7 +59,7 @@ func runConsumer(ctx context.Context, queueName string, maxMessages, waitTime in
 	cache := createRedisCache(redisClient)
 
 	// Initialize AWS SQS client
-	sqsClient, err := createSQSClient(ctx)
+	sqsClient, err := createSQSClient(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create SQS client: %w", err)
 	}
@@ -108,7 +74,7 @@ func runConsumer(ctx context.Context, queueName string, maxMessages, waitTime in
 	}
 
 	// Initialize idempotency store
-	idempotencyStore, err := createIdempotencyStore(ctx)
+	idempotencyStore, err := createIdempotencyStore(ctx, cfg, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create idempotency store: %w", err)
 	}
@@ -148,7 +114,7 @@ func runConsumer(ctx context.Context, queueName string, maxMessages, waitTime in
 		for _, msg := range messages {
 			totalProcessed++
 
-			err := processMessage(ctx, consumer, idempotencyStore, registry, msg)
+			err := processMessage(ctx, consumer, idempotencyStore, registry, cfg, logger, msg)
 			if err != nil {
 				// Classify error
 				var valErr ValidationError
@@ -198,7 +164,7 @@ func runConsumer(ctx context.Context, queueName string, maxMessages, waitTime in
 		}
 
 		// Check error rates
-		checkErrorRates(totalProcessed, validationErrors, transientErrors)
+		checkErrorRates(totalProcessed, validationErrors, transientErrors, logger)
 	}
 }
 
@@ -207,6 +173,8 @@ func processMessage(
 	consumer *sqsdriver.Consumer,
 	store *storage.IdempotencyStore,
 	registry *messaging.EventRegistry,
+	cfg *config.Config,
+	logger zerolog.Logger,
 	msg contracts.Message,
 ) error {
 	// Parse envelope
@@ -313,7 +281,7 @@ func isTransientError(err error) bool {
 	return false
 }
 
-func checkErrorRates(total, validation, transient int) {
+func checkErrorRates(total, validation, transient int, logger zerolog.Logger) {
 	if total < 100 {
 		return // Need enough samples
 	}
@@ -334,85 +302,6 @@ func checkErrorRates(total, validation, transient int) {
 	}
 }
 
-func createSQSClient(ctx context.Context) (*sqs.Client, error) {
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(cfg.AWS.Region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			cfg.AWS.AccessKeyID,
-			cfg.AWS.SecretAccessKey,
-			"",
-		)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	return sqs.NewFromConfig(awsCfg), nil
-}
-
-// createRedisClient creates and validates a Redis client connection
-func createRedisClient(ctx context.Context) (*redis.Client, error) {
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
-
-	// Test Redis connection
-	if _, err := redisClient.Ping(ctx).Result(); err != nil {
-		return nil, fmt.Errorf("redis connection failed: %w", err)
-	}
-
-	return redisClient, nil
-}
-
-// createRedisCache creates a Redis cache for queue URL resolution
 func createRedisCache(redisClient *redis.Client) *storage.RedisCache {
 	return storage.NewRedisCache(redisClient, "sqsmessaging")
-}
-
-func createIdempotencyStore(ctx context.Context) (*storage.IdempotencyStore, error) {
-	// Create Redis client
-	redisClient, err := createRedisClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create database connection
-	var db *gorm.DB
-
-	switch cfg.Database.Driver {
-	case "mysql":
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
-			cfg.Database.Username,
-			cfg.Database.Password,
-			cfg.Database.Host,
-			cfg.Database.Port,
-			cfg.Database.Database,
-		)
-		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
-	case "postgres":
-		dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-			cfg.Database.Host,
-			cfg.Database.Port,
-			cfg.Database.Username,
-			cfg.Database.Password,
-			cfg.Database.Database,
-		)
-		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	default:
-		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Database.Driver)
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("database connection failed: %w", err)
-	}
-
-	store := storage.NewIdempotencyStore(redisClient, db, logger)
-
-	// Auto-migrate the table
-	if err := store.AutoMigrate(); err != nil {
-		return nil, fmt.Errorf("failed to migrate database: %w", err)
-	}
-
-	return store, nil
 }
