@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 
-	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	"github.com/our-edu/go-sqs-messaging/internal/contracts"
 	sqsdriver "github.com/our-edu/go-sqs-messaging/internal/drivers/sqs"
 	"github.com/our-edu/go-sqs-messaging/internal/messaging"
 	"github.com/our-edu/go-sqs-messaging/internal/storage"
+	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	"github.com/our-edu/go-sqs-messaging/pkg/envelope"
 )
 

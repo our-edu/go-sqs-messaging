@@ -137,7 +137,7 @@ func (c *Client) runConsumerLoop(ctx context.Context, queueName string, opts *co
 					opts.onMessageEnd(pubMsg, processErr)
 				}
 
-				c.handleProcessResult(ctx, m, processErr, &stats)
+				c.handleProcessResult(ctx, m, processErr, &stats, opts)
 			}(msg)
 		}
 
@@ -297,7 +297,7 @@ func (c *Client) processInternalMessage(ctx context.Context, msg contracts.Messa
 	return nil
 }
 
-func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message, err error, stats *consumerStats) {
+func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message, err error, stats *consumerStats, opts *consumerOptions) {
 	receiptHandle := msg.ReceiptHandle
 	messageID := msg.MessageID
 
@@ -324,7 +324,22 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 			Str("message_id", messageID).
 			Err(err).
 			Msg("Validation error, deleting message")
-		c.consumer.DeleteMessage(ctx, receiptHandle)
+
+		// Call onError callback
+		if opts.onError != nil {
+			opts.onError(err)
+		}
+
+		// Delete message and handle any deletion errors
+		if deleteErr := c.consumer.DeleteMessage(ctx, receiptHandle); deleteErr != nil {
+			c.logger.Error().
+				Str("message_id", messageID).
+				Err(deleteErr).
+				Msg("Failed to delete message after validation error")
+			if opts.onError != nil {
+				opts.onError(deleteErr)
+			}
+		}
 		c.metricsProvider.IncValidationErrors(ctx, stats.queueName, "")
 
 	case ErrorTypeTransient:
@@ -335,6 +350,12 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 			Str("message_id", messageID).
 			Err(err).
 			Msg("Transient error, leaving for retry")
+
+		// Call onError callback
+		if opts.onError != nil {
+			opts.onError(err)
+		}
+
 		// Don't delete - will be retried or sent to DLQ
 		c.metricsProvider.IncTransientErrors(ctx, stats.queueName, "")
 
@@ -346,7 +367,22 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 			Str("message_id", messageID).
 			Err(err).
 			Msg("Permanent error, deleting message")
-		c.consumer.DeleteMessage(ctx, receiptHandle)
+
+		// Call onError callback
+		if opts.onError != nil {
+			opts.onError(err)
+		}
+
+		// Delete message and handle any deletion errors
+		if deleteErr := c.consumer.DeleteMessage(ctx, receiptHandle); deleteErr != nil {
+			c.logger.Error().
+				Str("message_id", messageID).
+				Err(deleteErr).
+				Msg("Failed to delete message after permanent error")
+			if opts.onError != nil {
+				opts.onError(deleteErr)
+			}
+		}
 		c.metricsProvider.IncPermanentErrors(ctx, stats.queueName, "")
 
 	default:
@@ -354,6 +390,11 @@ func (c *Client) handleProcessResult(ctx context.Context, msg contracts.Message,
 			Str("message_id", messageID).
 			Err(err).
 			Msg("Unknown error")
+
+		// Call onError callback for unknown errors too
+		if opts.onError != nil {
+			opts.onError(err)
+		}
 	}
 }
 
@@ -652,7 +693,7 @@ func (c *Client) runSingleQueueConsumer(ctx context.Context, qc *queueConsumer, 
 					opts.onMessageEnd(pubMsg, processErr)
 				}
 
-				c.handleProcessResultWithURL(ctx, qc.queueURL, m, processErr, &stats)
+				c.handleProcessResultWithURL(ctx, qc.queueURL, m, processErr, &stats, opts)
 			}(msg)
 		}
 
@@ -832,7 +873,7 @@ func (c *Client) processMessageWithURL(ctx context.Context, queueURL string, msg
 }
 
 // handleProcessResultWithURL handles the result of processing a message using a specific queue URL
-func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string, msg contracts.Message, err error, stats *consumerStats) {
+func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string, msg contracts.Message, err error, stats *consumerStats, opts *consumerOptions) {
 	receiptHandle := msg.ReceiptHandle
 	messageID := msg.MessageID
 
@@ -859,7 +900,22 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 			Str("message_id", messageID).
 			Err(err).
 			Msg("Validation error, deleting message")
-		c.deleteMessageWithURL(ctx, queueURL, receiptHandle)
+
+		// Call onError callback
+		if opts.onError != nil {
+			opts.onError(err)
+		}
+
+		// Delete message and handle any deletion errors
+		if deleteErr := c.deleteMessageWithURL(ctx, queueURL, receiptHandle); deleteErr != nil {
+			c.logger.Error().
+				Str("message_id", messageID).
+				Err(deleteErr).
+				Msg("Failed to delete message after validation error")
+			if opts.onError != nil {
+				opts.onError(deleteErr)
+			}
+		}
 		c.metricsProvider.IncValidationErrors(ctx, stats.queueName, "")
 
 	case ErrorTypeTransient:
@@ -870,6 +926,12 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 			Str("message_id", messageID).
 			Err(err).
 			Msg("Transient error, leaving for retry")
+
+		// Call onError callback
+		if opts.onError != nil {
+			opts.onError(err)
+		}
+
 		// Don't delete - will be retried or sent to DLQ
 		c.metricsProvider.IncTransientErrors(ctx, stats.queueName, "")
 
@@ -881,7 +943,22 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 			Str("message_id", messageID).
 			Err(err).
 			Msg("Permanent error, deleting message")
-		c.deleteMessageWithURL(ctx, queueURL, receiptHandle)
+
+		// Call onError callback
+		if opts.onError != nil {
+			opts.onError(err)
+		}
+
+		// Delete message and handle any deletion errors
+		if deleteErr := c.deleteMessageWithURL(ctx, queueURL, receiptHandle); deleteErr != nil {
+			c.logger.Error().
+				Str("message_id", messageID).
+				Err(deleteErr).
+				Msg("Failed to delete message after permanent error")
+			if opts.onError != nil {
+				opts.onError(deleteErr)
+			}
+		}
 		c.metricsProvider.IncPermanentErrors(ctx, stats.queueName, "")
 
 	default:
@@ -889,6 +966,11 @@ func (c *Client) handleProcessResultWithURL(ctx context.Context, queueURL string
 			Str("message_id", messageID).
 			Err(err).
 			Msg("Unknown error")
+
+		// Call onError callback for unknown errors too
+		if opts.onError != nil {
+			opts.onError(err)
+		}
 	}
 }
 

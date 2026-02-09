@@ -52,17 +52,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/go-redis/redis/v8"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	"github.com/our-edu/go-sqs-messaging/internal/contracts"
 	sqsdriver "github.com/our-edu/go-sqs-messaging/internal/drivers/sqs"
 	"github.com/our-edu/go-sqs-messaging/internal/messaging"
 	"github.com/our-edu/go-sqs-messaging/internal/metrics"
 	"github.com/our-edu/go-sqs-messaging/internal/storage"
+	"github.com/our-edu/go-sqs-messaging/pkg/config"
 )
 
 // Client is the main entry point for the SQS messaging library.

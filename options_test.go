@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/our-edu/go-sqs-messaging/pkg/config"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestWithAWSCredentials(t *testing.T) {
