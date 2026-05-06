@@ -203,6 +203,7 @@ func TestWithRedis(t *testing.T) {
 	opts := &Options{config: defaultTestConfig()}
 
 	WithRedis("localhost:6379", "password", 1)(opts)
+	t.Cleanup(func() { opts.redisClient.Close() })
 
 	if opts.redisClient == nil {
 		t.Error("expected redisClient to be set")
@@ -223,6 +224,7 @@ func TestWithRedisClient(t *testing.T) {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
+	t.Cleanup(func() { redisClient.Close() })
 
 	WithRedisClient(redisClient)(opts)
 
