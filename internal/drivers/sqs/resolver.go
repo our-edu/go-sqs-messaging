@@ -4,6 +4,7 @@ package sqs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -98,12 +99,14 @@ func (r *Resolver) CreateQueue(ctx context.Context, queueName string) (string, e
 	return *result.QueueUrl, nil
 }
 
-// CreateQueueWithDLQ creates a queue with an associated Dead Letter Queue
+// CreateQueueWithDLQ creates a queue with an associated Dead Letter Queue.
+// If either the DLQ or the main queue already exists (even with different attributes),
+// the existing queue URL is used instead of failing.
 func (r *Resolver) CreateQueueWithDLQ(ctx context.Context, queueName string) (string, error) {
 	prefixedName := r.config.GetPrefixedQueueName(queueName)
 	dlqName := r.config.GetDLQName(prefixedName)
 
-	// Create DLQ first
+	// Create DLQ first (or get existing)
 	dlqResult, err := r.client.CreateQueue(ctx, &sqs.CreateQueueInput{
 		QueueName: aws.String(dlqName),
 		Attributes: map[string]string{
@@ -111,9 +114,22 @@ func (r *Resolver) CreateQueueWithDLQ(ctx context.Context, queueName string) (st
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to create DLQ %s: %w", dlqName, err)
+		var queueExists *types.QueueNameExists
+		if !errors.As(err, &queueExists) {
+			return "", fmt.Errorf("failed to create DLQ %s: %w", dlqName, err)
+		}
+		// DLQ already exists — fetch its URL
+		r.logger.Info().Str("dlq", dlqName).Msg("DLQ already exists, using existing")
+		existing, getErr := r.client.GetQueueUrl(ctx, &sqs.GetQueueUrlInput{
+			QueueName: aws.String(dlqName),
+		})
+		if getErr != nil {
+			return "", fmt.Errorf("failed to get existing DLQ URL for %s: %w", dlqName, getErr)
+		}
+		dlqResult = &sqs.CreateQueueOutput{QueueUrl: existing.QueueUrl}
+	} else {
+		r.logger.Info().Str("dlq", dlqName).Msg("Created DLQ")
 	}
-	r.logger.Info().Str("dlq", dlqName).Msg("Created DLQ")
 
 	// Get DLQ ARN
 	dlqAttrs, err := r.client.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{
@@ -132,7 +148,7 @@ func (r *Resolver) CreateQueueWithDLQ(ctx context.Context, queueName string) (st
 	}
 	redrivePolicyJSON, _ := json.Marshal(redrivePolicy)
 
-	// Create main queue with redrive policy
+	// Create main queue with redrive policy (or get existing)
 	result, err := r.client.CreateQueue(ctx, &sqs.CreateQueueInput{
 		QueueName: aws.String(prefixedName),
 		Attributes: map[string]string{
@@ -143,7 +159,20 @@ func (r *Resolver) CreateQueueWithDLQ(ctx context.Context, queueName string) (st
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to create queue %s: %w", prefixedName, err)
+		var queueExists *types.QueueNameExists
+		if !errors.As(err, &queueExists) {
+			return "", fmt.Errorf("failed to create queue %s: %w", prefixedName, err)
+		}
+		// Queue already exists — fetch its URL
+		r.logger.Info().Str("queue", prefixedName).Msg("Queue already exists, using existing")
+		existing, getErr := r.client.GetQueueUrl(ctx, &sqs.GetQueueUrlInput{
+			QueueName: aws.String(prefixedName),
+		})
+		if getErr != nil {
+			return "", fmt.Errorf("failed to get existing queue URL for %s: %w", prefixedName, getErr)
+		}
+		r.cacheURL(ctx, prefixedName, *existing.QueueUrl)
+		return *existing.QueueUrl, nil
 	}
 
 	r.cacheURL(ctx, prefixedName, *result.QueueUrl)

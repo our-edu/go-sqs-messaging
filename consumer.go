@@ -99,10 +99,7 @@ func (c *Client) runConsumerLoop(ctx context.Context, queueName string, opts *co
 
 		c.logger.Debug().Int("count", len(messages)).Msg("Received messages")
 
-		maxConc := opts.maxConcurrency
-		if maxConc < 1 {
-			maxConc = 1
-		}
+		maxConc := max(opts.maxConcurrency, 1)
 
 		sem := make(chan struct{}, maxConc)
 		var wg sync.WaitGroup
@@ -614,10 +611,7 @@ func (c *Client) runSingleQueueConsumer(ctx context.Context, qc *queueConsumer, 
 			Int("count", len(messages)).
 			Msg("Received messages")
 
-		maxConc := opts.maxConcurrency
-		if maxConc < 1 {
-			maxConc = 1
-		}
+		maxConc := max(opts.maxConcurrency, 1)
 
 		sem := make(chan struct{}, maxConc)
 		var wg sync.WaitGroup
