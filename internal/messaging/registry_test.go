@@ -125,7 +125,7 @@ func TestEventRegistry_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent writes
 	wg.Add(numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(i int) {
 			defer wg.Done()
 			eventType := "Event" + string(rune('A'+i%26))
@@ -136,7 +136,7 @@ func TestEventRegistry_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent reads
 	wg.Add(numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(i int) {
 			defer wg.Done()
 			eventType := "Event" + string(rune('A'+i%26))
@@ -147,7 +147,7 @@ func TestEventRegistry_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent list
 	wg.Add(numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
 			registry.ListEventTypes()
@@ -167,22 +167,22 @@ func TestEventRegistry_ConcurrentReadWrite(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Start readers
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				registry.GetHandler("OrderCreated")
 			}
 		}()
 	}
 
 	// Start writers
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				registry.Register("OrderCreated", handler)
 			}
 		}()

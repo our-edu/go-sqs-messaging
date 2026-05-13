@@ -3,6 +3,7 @@
 package config
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -201,12 +202,7 @@ func (c *Config) GetDLQName(queueName string) string {
 
 // IsLongRunningEvent checks if an event type requires extended visibility timeout
 func (c *Config) IsLongRunningEvent(eventType string) bool {
-	for _, e := range c.SQS.LongRunningEvents {
-		if e == eventType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.SQS.LongRunningEvents, eventType)
 }
 
 // GetEventTimeout returns the visibility timeout for a specific event type.

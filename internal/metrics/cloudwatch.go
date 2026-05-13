@@ -226,10 +226,7 @@ func (s *CloudWatchProvider) FlushBuffer(ctx context.Context) error {
 
 	// Send in batches of 20
 	for i := 0; i < len(s.buffer); i += s.batchSize {
-		end := i + s.batchSize
-		if end > len(s.buffer) {
-			end = len(s.buffer)
-		}
+		end := min(i+s.batchSize, len(s.buffer))
 
 		batch := s.buffer[i:end]
 		_, err := s.client.PutMetricData(ctx, &cloudwatch.PutMetricDataInput{

@@ -338,7 +338,7 @@ func TestRedisCache_Concurrency(t *testing.T) {
 
 	// Concurrent writes
 	done := make(chan bool, 200)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		go func(i int) {
 			key := "key"
 			cache.Set(ctx, key, "value", 0)
@@ -347,7 +347,7 @@ func TestRedisCache_Concurrency(t *testing.T) {
 	}
 
 	// Concurrent reads
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		go func() {
 			cache.Get(ctx, "key")
 			done <- true
@@ -355,7 +355,7 @@ func TestRedisCache_Concurrency(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		<-done
 	}
 

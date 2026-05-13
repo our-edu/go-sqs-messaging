@@ -1,6 +1,7 @@
 package sqsmessaging
 
 import (
+	"maps"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -334,9 +335,7 @@ func WithEventTimeouts(timeouts map[string]int) Option {
 		if o.config.SQS.EventTimeouts == nil {
 			o.config.SQS.EventTimeouts = make(map[string]int)
 		}
-		for eventType, timeout := range timeouts {
-			o.config.SQS.EventTimeouts[eventType] = timeout
-		}
+		maps.Copy(o.config.SQS.EventTimeouts, timeouts)
 	}
 }
 
@@ -352,9 +351,7 @@ func WithEventTimeouts(timeouts map[string]int) Option {
 //	)
 func WithTargetQueueMappings(mappings map[string]string) Option {
 	return func(o *Options) {
-		for k, v := range mappings {
-			o.config.TargetQueue.Mappings[k] = v
-		}
+		maps.Copy(o.config.TargetQueue.Mappings, mappings)
 	}
 }
 
